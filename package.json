@@ -1,0 +1,39 @@
+{
+  "name": "prompt-draft",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "lint": "eslint .",
+    "format": "prettier --write src",
+    "check": "npm run lint && npm run build && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "diff": "^9.0.0",
+    "echarts": "^6.1.0",
+    "lucide-vue-next": "^0.468.0",
+    "markdown-it": "^15.0.3",
+    "mustache": "^4.2.0",
+    "naive-ui": "^2",
+    "vue": "^3",
+    "vue-echarts": "^8.3.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/mustache": "^4.2.6",
+    "@vitejs/plugin-vue": "^6",
+    "eslint": "^9",
+    "eslint-plugin-vue": "^10",
+    "prettier": "^3",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8",
+    "vite": "^7",
+    "vue-tsc": "^3"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+src-tauri/target/
+.env*
+*.log
+src-tauri/gen/
+
+# Local databases may contain API keys and private drafts.
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*

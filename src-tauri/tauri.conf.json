@@ -1,0 +1,35 @@
+{
+  "productName": "词稿",
+  "version": "0.1.0",
+  "identifier": "cn.promptdraft.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "词稿",
+        "width": 1260,
+        "height": 820,
+        "minWidth": 480,
+        "minHeight": 570,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}
