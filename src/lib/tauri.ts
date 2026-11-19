@@ -234,7 +234,17 @@ export const desktop = {
   cancel: (requestId: string) => invoke<void>("cancel", { requestId }),
   exportFile: (path: string, content: string) =>
     invoke<void>("export_file", { path, content }),
-  importFile: (path: string) => invoke<string>("import_file", { path }),
+  exportBackup: (path: string) => invoke<void>("export_backup", { path }),
+  previewBackup: (path: string) =>
+    invoke<{
+      projects: number;
+      drafts: number;
+      versions: number;
+      providers: number;
+      usage: number;
+      prices: number;
+    }>("preview_backup", { path }),
+  restoreBackup: (path: string) => invoke<void>("restore_backup", { path }),
 };
 export function errorMessage(error: unknown) {
   return typeof error === "string"

@@ -1,12 +1,13 @@
 use crate::{model_client, optimizer, storage};
 use rusqlite::Connection;
 use serde_json::json;
-use std::{collections::HashMap, io::Read, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex};
 use tauri::{ipc::Channel, State};
 use tokio::sync::oneshot;
 
 pub struct AppState {
     database: Mutex<Connection>,
+    operations: tokio::sync::RwLock<()>,
     requests: Mutex<HashMap<String, oneshot::Sender<()>>>,
     client: reqwest::Client,
     models_dev: Mutex<Option<serde_json::Value>>,
@@ -17,6 +18,7 @@ impl AppState {
     pub fn new(database: Connection) -> Result<Self, reqwest::Error> {
         Ok(Self {
             database: Mutex::new(database),
+            operations: tokio::sync::RwLock::new(()),
             requests: Mutex::default(),
             client: model_client::client()?,
             models_dev: Mutex::new(None),
@@ -71,6 +73,7 @@ pub async fn test_model(
     profile: storage::Profile,
     key: Option<String>,
 ) -> Result<(), String> {
+    let _operation = state.operations.read().await;
     let key = match key {
         Some(key) => key,
         None => state.key(&profile)?,
@@ -102,6 +105,7 @@ pub async fn fetch_models(
     profile: storage::Profile,
     key: Option<String>,
 ) -> Result<Vec<String>, String> {
+    let _operation = state.operations.read().await;
     let key = match key {
         Some(key) => key,
         None => state.key(&profile)?,
@@ -148,6 +152,7 @@ pub async fn optimize(
     input: OptimizeRequest,
     on_delta: Channel<String>,
 ) -> Result<String, String> {
+    let _operation = state.operations.read().await;
     let OptimizeRequest {
         profile,
         source,
@@ -225,14 +230,28 @@ pub async fn export_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn import_file(path: String) -> Result<String, String> {
-    let file = std::fs::File::open(path).map_err(|_| "无法打开备份文件。")?;
-    let mut document = String::new();
-    file.take((storage::MAX_BACKUP + 1) as u64)
-        .read_to_string(&mut document)
-        .map_err(|_| "无法读取 UTF-8 备份文件。")?;
-    let workspace = storage::parse(&document)?;
-    serde_json::to_string(&workspace).map_err(|_| "无法编码工作区数据。".into())
+pub fn export_backup(state: State<AppState>, path: String) -> Result<(), String> {
+    let _guard = state
+        .operations
+        .try_write()
+        .map_err(|_| "请等待模型请求或价格同步完成后再导出。")?;
+    let document = crate::backup::export(&state.database.lock().unwrap())?;
+    std::fs::write(path, document).map_err(|_| "无法保存完整备份文件。".into())
+}
+#[tauri::command]
+pub fn preview_backup(path: String) -> Result<serde_json::Value, String> {
+    crate::backup::preview(&crate::backup::read(&path)?)
+}
+#[tauri::command]
+pub fn restore_backup(state: State<AppState>, path: String) -> Result<(), String> {
+    let _guard = state
+        .operations
+        .try_write()
+        .map_err(|_| "请等待模型请求或价格同步完成后再导入。")?;
+    let text = crate::backup::read(&path)?;
+    crate::backup::restore(&state.database.lock().unwrap(), &text)?;
+    *state.models_dev.lock().unwrap() = None;
+    Ok(())
 }
 
 impl AppState {
@@ -293,6 +312,7 @@ pub async fn update_usage_catalog(
     state: State<'_, AppState>,
     sync: bool,
 ) -> Result<serde_json::Value, String> {
+    let _operation = state.operations.read().await;
     let result = update_usage_catalog_impl(state.clone(), sync).await;
     if sync {
         let db = state.database.lock().unwrap();
@@ -463,6 +483,7 @@ pub async fn models_dev_picker(
     state: State<'_, AppState>,
     refresh: Option<bool>,
 ) -> Result<serde_json::Value, String> {
+    let _operation = state.operations.read().await;
     let _loading = state.models_dev_loading.lock().await;
     let cached = if refresh == Some(true) {
         None

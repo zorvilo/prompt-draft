@@ -702,8 +702,8 @@ async function run(action: "test" | "save" | "clear") {
               <div class="preference-card">
                 <div class="preference-row">
                   <div>
-                    <h3>导出工作区</h3>
-                    <p>将当前工作区保存为 JSON 备份文件。</p>
+                    <h3>导出完整备份</h3>
+                    <p>将全部本地数据与配置保存为 JSON，可迁移到新电脑。</p>
                   </div>
                   <n-button size="small" @click="emit('backup')"
                     ><template #icon><Download aria-hidden="true" /></template
@@ -713,7 +713,7 @@ async function run(action: "test" | "save" | "clear") {
                 <div class="preference-row">
                   <div>
                     <h3>从备份恢复</h3>
-                    <p>将替换当前工作区，操作前会再次确认。</p>
+                    <p>覆盖当前全部数据和配置，校验通过后会再次确认。</p>
                   </div>
                   <n-button size="small" @click="emit('restore')"
                     ><template #icon><Upload aria-hidden="true" /></template
@@ -723,9 +723,9 @@ async function run(action: "test" | "save" | "clear") {
                 <div class="backup-scope">
                   <Info :size="16" aria-hidden="true" />
                   <p>
-                    备份包含草稿、项目、版本、模板、供应商配置与应用设置，<strong
-                      >不包含 API Key</strong
-                    >。恢复前建议先导出当前工作区。
+                    备份包含项目、草稿、版本、用户模板及分类、供应商、应用设置、用量、价格和目录缓存，<strong
+                      >包含明文 API Key</strong
+                    >。请妥善保管文件。新电脑请使用同版本软件恢复，开机自启需重新设置。
                   </p>
                 </div>
               </div>

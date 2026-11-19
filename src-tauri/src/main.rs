@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod backup;
 mod commands;
 mod model_client;
 mod models_dev_selection;
@@ -62,7 +63,9 @@ fn main() {
             commands::preview_template,
             commands::cancel,
             commands::export_file,
-            commands::import_file
+            commands::export_backup,
+            commands::preview_backup,
+            commands::restore_backup
         ])
         .run(tauri::generate_context!())
         .expect("启动词稿失败");

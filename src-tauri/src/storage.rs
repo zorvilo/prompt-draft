@@ -440,7 +440,7 @@ fn persist(db: &Connection, changes: &WorkspaceChanges) -> rusqlite::Result<()> 
     Ok(())
 }
 
-fn validate_state(db: &Connection) -> Result<(), String> {
+pub(crate) fn validate_state(db: &Connection) -> Result<(), String> {
     let (prefs, ui): (String, String) = db
         .query_row(
             "SELECT preferences_json,ui_state_json FROM app_settings WHERE id=1",

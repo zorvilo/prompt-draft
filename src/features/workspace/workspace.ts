@@ -113,13 +113,19 @@ export function useWorkspace() {
     }
   }
 
-  async function replace(document: string) {
+  async function restoreBackup(path: string) {
     clearTimeout(timer);
     await write;
-    await desktop.save(document);
-    data.value = JSON.parse(document) as Workspace;
-    lastSaved = JSON.stringify(data.value);
-    await save();
+    clearTimeout(timer);
+    ready.value = false;
+    try {
+      await desktop.restoreBackup(path);
+      // Reload all mounted views so no stale settings or queued edits overwrite the restored data.
+      window.location.reload();
+    } catch (error) {
+      ready.value = true;
+      throw error;
+    }
   }
 
   return {
@@ -133,7 +139,7 @@ export function useWorkspace() {
     newDraft,
     openDraft,
     initialize,
-    replace,
+    restoreBackup,
     save,
   };
 }
