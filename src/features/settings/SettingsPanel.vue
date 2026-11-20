@@ -768,12 +768,12 @@ async function run(action: "test" | "save" | "clear") {
                   </div>
                 </div>
                 <div class="preference-row">
-                  <h3>当前版本</h3>
-                  <span class="muted">{{ version }}</span>
-                </div>
-                <div class="preference-row">
                   <h3>作者</h3>
                   <span class="muted">刘涵宇</span>
+                </div>
+                <div class="preference-row">
+                  <h3>当前版本</h3>
+                  <span class="muted">{{ version }}</span>
                 </div>
                 <div class="preference-row">
                   <h3>应用类型</h3>

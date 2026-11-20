@@ -731,7 +731,7 @@ mod tests {
             ]
         );
         let prices = crate::usage::catalog_rows(&db).unwrap();
-        assert_eq!(prices.len(), 240);
+        assert_eq!(prices.len(), 83);
         crate::usage::initialize(&db).unwrap();
         assert_eq!(crate::usage::catalog_rows(&db).unwrap(), prices);
         assert_eq!(

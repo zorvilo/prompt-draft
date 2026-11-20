@@ -318,17 +318,17 @@ mod tests {
         let db = crate::storage::open(std::path::Path::new(":memory:")).unwrap();
         let before = catalog_rows(&db).unwrap().len();
         let data = json!({"deepseek":{"api":"https://api.deepseek.com","models":{
-            "deepseek-flash":{"cost":{"input":2,"output":4,"cache_read":0.5}},
+            "deepseek-v3.2":{"cost":{"input":2,"output":4,"cache_read":0.5}},
             "new-unselected-model":{"cost":{"input":1,"output":2}}
         }}});
         sync_existing(&db, "7", "2026-11-18", &data).unwrap();
         sync_existing(&db, "7", "2026-11-18", &data).unwrap();
         let rows = catalog_rows(&db).unwrap();
         assert_eq!(rows.len(), before);
-        assert_eq!(before, 240);
+        assert_eq!(before, 83);
         let row = rows
             .iter()
-            .find(|row| row["model"] == "deepseek-flash")
+            .find(|row| row["model"] == "deepseek-v3.2")
             .unwrap();
         assert_eq!(row["input"], "14");
         assert_eq!(row["source"], "models.dev");
@@ -338,9 +338,49 @@ mod tests {
     }
 
     #[test]
+    fn sync_preserves_protected_deepseek_prices_and_updates_other_models() {
+        let db = crate::storage::open(std::path::Path::new(":memory:")).unwrap();
+        let snapshot = |model: &str| -> Vec<(String, String, String, String, String, Option<i64>)> {
+            db.prepare("SELECT input_price,output_price,cache_read_price,cache_write_price,source,synced_at FROM model_prices WHERE model_id=? ORDER BY endpoint_scope,layer").unwrap().query_map([model],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+        };
+        let flash = snapshot("deepseek-flash");
+        let pro = snapshot("deepseek-v4-pro");
+        let protected = json!({"deepseek":{"api":"https://api.deepseek.com","models":{
+            "DeepSeek-Flash":{"cost":{"input":999,"output":999,"cache_read":999,"cache_write":999}},
+            "deepseek-v4-pro":{"cost":{"input":999,"output":999,"cache_read":999,"cache_write":999}}
+        }}});
+        let result = sync_existing(&db, "7", "2026-11-20", &protected).unwrap();
+        assert_eq!(result["synced"], 0);
+        assert_eq!(snapshot("deepseek-flash"), flash);
+        assert_eq!(snapshot("deepseek-v4-pro"), pro);
+        let mut mixed = protected.clone();
+        mixed["deepseek"]["models"]["deepseek-v3.2"] =
+            json!({"cost":{"input":2,"output":4,"cache_read":0.5,"cache_write":0}});
+        let result = sync_existing(&db, "7", "2026-11-20", &mixed).unwrap();
+        assert_eq!(result["synced"], 1);
+        assert_eq!(snapshot("deepseek-flash"), flash);
+        assert_eq!(snapshot("deepseek-v4-pro"), pro);
+        assert_eq!(snapshot("deepseek-v3.2")[0].0, "14");
+        update_catalog(&db, "7", Some("2026-11-20"), Some(&protected)).unwrap();
+        for model in ["deepseek-flash", "deepseek-v4-pro"] {
+            let rows = snapshot(model);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].4, "CC Switch");
+            assert_ne!(rows[0].0, "6993");
+        }
+    }
+
+    #[test]
     fn offline_first_launch_prices_without_network_and_overrides_survive_refresh() {
         let db = crate::storage::open(std::path::Path::new(":memory:")).unwrap();
-        assert_eq!(catalog_rows(&db).unwrap().len(), 240);
+        assert_eq!(catalog_rows(&db).unwrap().len(), 83);
+        let models = catalog_rows(&db).unwrap();
+        assert!(models.iter().any(|row| row["model"] == "deepseek-v4-pro"));
+        assert!(!models.iter().any(|row| [
+            "gpt", "claude", "gemini", "grok", "mistral", "command", "o1", "o3", "codex"
+        ]
+        .iter()
+        .any(|prefix| row["model"].as_str().unwrap().starts_with(prefix))));
         assert!(catalog_settings(&db).unwrap()["rateDate"].is_string());
         let profile: Profile = serde_json::from_value(
             json!({"id":"local","name":"Internal API","model":"deepseek-flash","endpoint":"http://10.147.103.23:9666/v1"}),
@@ -405,7 +445,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(seed_count, 240);
+        assert_eq!(seed_count, 83);
         assert!(update_catalog(&db, "8", Some("2026-11-18"), Some(&json!({}))).is_err());
         update_catalog(&db, "8", Some("2026-11-18"), None).unwrap();
         save_catalog_price(
@@ -425,6 +465,24 @@ mod tests {
         let report = stats(&db, 0, 0, None, "logs", false, None).unwrap();
         assert_eq!(report["rows"][0]["cost"], 0.0182);
         assert_eq!(report["rows"][1]["cost"], 0.0259);
+        update_catalog(&db, "6.5", None, None).unwrap();
+        let rows = catalog_rows(&db).unwrap();
+        let custom = rows
+            .iter()
+            .find(|row| row["model"] == "test-sync-model" && row["source"] == "manual")
+            .unwrap();
+        assert_eq!(custom["input"], "10");
+        let builtin = rows
+            .iter()
+            .find(|row| row["model"] == "deepseek-v4-pro")
+            .unwrap();
+        assert_eq!(builtin["input"], "8.580");
+        let after = stats(&db, 0, 0, None, "logs", false, None).unwrap();
+        assert_eq!(after["rows"][0]["cost"], 0.0182);
+        assert_eq!(after["rows"][1]["cost"], 0.0259);
+        for invalid in ["0", "-1", "101", "NaN", ""] {
+            assert!(update_catalog(&db, invalid, None, None).is_err());
+        }
     }
 
     #[test]
@@ -590,6 +648,7 @@ fn remote_quotes(remote: &Value) -> Result<Vec<(String, String, [Decimal; 4])>, 
     if quotes.is_empty() {
         return Err("models.dev 未返回可匹配的报价。".into());
     }
+    quotes.retain(|(_, model, _)| !matches!(model.as_str(), "deepseek-flash" | "deepseek-v4-pro"));
     Ok(quotes)
 }
 
@@ -666,7 +725,7 @@ pub fn update_catalog(
             .unwrap_or_default()
             .as_millis() as i64
     });
-    tx.execute("INSERT INTO pricing_settings (id, usd_to_cny_rate, last_synced_at, rate_date) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET usd_to_cny_rate = excluded.usd_to_cny_rate, last_synced_at = coalesce(excluded.last_synced_at, pricing_settings.last_synced_at), rate_date = excluded.rate_date", params![rate.to_string(), synced_at, rate_date]).map_err(failed)?;
+    tx.execute("INSERT INTO pricing_settings (id, usd_to_cny_rate, last_synced_at, rate_date) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET usd_to_cny_rate = excluded.usd_to_cny_rate, last_synced_at = coalesce(excluded.last_synced_at, pricing_settings.last_synced_at), rate_date = excluded.rate_date", params![rate.to_string(), synced_at, rate_date.unwrap_or("")]).map_err(failed)?;
     backfill(&tx, None).map_err(failed)?;
     let mut result = catalog_settings(&tx).map_err(failed)?;
     result["synced"] = json!(synced);

@@ -167,8 +167,8 @@ export const desktop = {
     invoke<void>("save_usage_catalog_price", { price, remove }),
   usageCatalogSettings: () =>
     invoke<UsageCatalogSettings>("usage_catalog_settings"),
-  updateUsageCatalog: (sync: boolean) =>
-    invoke<UsageCatalogSettings>("update_usage_catalog", { sync }),
+  updateUsageCatalog: (sync: boolean, rate?: string) =>
+    invoke<UsageCatalogSettings>("update_usage_catalog", { sync, rate }),
   usageStats: (query: {
     hourly?: boolean;
     until?: number;

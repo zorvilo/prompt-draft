@@ -23,7 +23,10 @@ defineEmits<{ back: [] }>();
 const picker = ref(false);
 const rows = ref<CatalogPrice[]>([]);
 const settings = ref<UsageCatalogSettings>();
+const exchangeRate = ref("");
+const rateError = ref("");
 const loading = ref(false);
+const syncing = ref(false);
 const saving = ref(false);
 const error = ref("");
 const query = ref("");
@@ -61,7 +64,8 @@ const money = (value: string) =>
   new Intl.NumberFormat("zh-CN", {
     style: "currency",
     currency: "CNY",
-    maximumFractionDigits: 8,
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
   }).format(Number(value));
 
 async function load() {
@@ -71,12 +75,15 @@ async function load() {
   ]);
   rows.value = result[0];
   settings.value = result[1];
+  exchangeRate.value = result[1].rate ?? "";
   page.value = Math.min(
     page.value,
     Math.max(1, Math.ceil(filtered.value.length / 20)),
   );
 }
 async function refresh(sync = false) {
+  if (loading.value) return;
+  syncing.value = sync;
   loading.value = true;
   error.value = "";
   try {
@@ -87,6 +94,31 @@ async function refresh(sync = false) {
     await load();
   } catch (cause) {
     error.value = errorMessage(cause);
+  } finally {
+    loading.value = false;
+    syncing.value = false;
+  }
+}
+async function saveRate() {
+  if (loading.value || saving.value) return;
+  rateError.value = "";
+  const rate = exchangeRate.value.trim();
+  if (
+    !rate ||
+    !Number.isFinite(Number(rate)) ||
+    Number(rate) <= 0 ||
+    Number(rate) > 100
+  ) {
+    rateError.value = "请输入大于 0 且不超过 100 的换算汇率。";
+    return;
+  }
+  loading.value = true;
+  try {
+    await desktop.updateUsageCatalog(false, rate);
+    await load();
+    message.success("汇率已保存，参考单价已重新换算");
+  } catch (cause) {
+    rateError.value = errorMessage(cause);
   } finally {
     loading.value = false;
   }
@@ -152,9 +184,9 @@ onMounted(() => {
         >返回统计</n-button
       >
       <span class="pricing-spacer" />
-      <n-button :loading="loading" @click="refresh(true)"
-        ><template #icon><RefreshCw aria-hidden="true" /></template>同步
-        models.dev</n-button
+      <n-button :disabled="loading" @click="refresh(true)"
+        ><template #icon><RefreshCw aria-hidden="true" /></template
+        >同步</n-button
       >
       <n-button type="primary" @click="edit()"
         ><template #icon><Plus aria-hidden="true" /></template
@@ -166,11 +198,39 @@ onMounted(() => {
     </p>
     <div class="pricing-notice">
       <strong>人民币 / 百万 Token</strong>
-      <p v-if="settings?.rateDate">
-        参考汇率日期 {{ settings.rateDate }} · 1 USD ≈ ¥{{ settings.rate }}
+      <p>单价显示四舍五入至一位小数，费用计算仍使用完整精度。</p>
+      <p>
+        同步不会覆盖 deepseek-flash 和 deepseek-v4-pro，保留系统内置参考价。
+      </p>
+      <form class="pricing-rate-form" @submit.prevent="saveRate">
+        <label for="pricing-exchange-rate">1 美元折合人民币</label>
+        <n-input
+          v-model:value="exchangeRate"
+          :input-props="{ id: 'pricing-exchange-rate', inputmode: 'decimal' }"
+          :disabled="loading || saving"
+          placeholder="例如 6.663"
+        />
+        <span>元</span>
+        <n-button
+          attr-type="submit"
+          size="small"
+          :loading="loading && !syncing"
+          :disabled="
+            loading || saving || exchangeRate.trim() === settings?.rate
+          "
+          >保存汇率</n-button
+        >
+      </form>
+      <p v-if="rateError" role="alert">{{ rateError }}</p>
+      <p v-if="settings?.rateDate">参考汇率日期 {{ settings.rateDate }}</p>
+      <p>
+        内置及 models.dev
+        参考报价以美元为基础，按汇率折算成人民币，可能与供应商人民币挂牌价或实际账单存在差异。费用仅供参考。
       </p>
       <p>
-        首次使用内置报价与汇率快照，离线可直接计算。联网同步会自动更新。价格按供应商单独设置、自定义目录、同步报价、系统内置的顺序匹配。
+        保存汇率会重新换算参考单价，不修改自定义人民币单价及已计价的历史金额。同步
+        models.dev
+        时会重新获取汇率。需要按实际价格计费，可在下表点击“编辑”填写人民币单价。
       </p>
       <p v-if="settings?.syncedAt">
         上次同步
@@ -202,8 +262,25 @@ onMounted(() => {
     <p v-if="error" role="alert">
       {{ error }} <n-button size="small" @click="refresh()">重试</n-button>
     </p>
-    <n-spin v-if="loading" />
-    <div v-else class="pricing-table-wrap">
+    <n-modal
+      :show="syncing"
+      preset="card"
+      aria-label="正在同步模型价格"
+      :content-style="{ padding: '20px 24px' }"
+      :closable="false"
+      :mask-closable="false"
+      :close-on-esc="false"
+      :style="{ width: 'min(400px, calc(100vw - 32px))', marginTop: '10vh' }"
+    >
+      <div role="status" aria-live="polite" class="pricing-sync-status">
+        <n-spin :size="22" class="pricing-sync-spinner" />
+        <div class="pricing-sync-copy">
+          <strong>正在同步模型价格</strong
+          ><span>获取 models.dev 报价与最新汇率…</span>
+        </div>
+      </div>
+    </n-modal>
+    <div class="pricing-table-wrap" :aria-busy="loading">
       <table aria-label="模型定价表">
         <thead>
           <tr>
@@ -308,6 +385,40 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.pricing-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pricing-sync-spinner {
+  flex-shrink: 0;
+}
+.pricing-sync-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.pricing-sync-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.pricing-sync-copy span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.pricing-rate-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pricing-rate-form .n-input {
+  width: 140px;
+}
+
 .pricing-pagination {
   justify-self: end;
   align-self: flex-end;

@@ -311,8 +311,15 @@ pub fn usage_catalog_settings(state: State<AppState>) -> Result<serde_json::Valu
 pub async fn update_usage_catalog(
     state: State<'_, AppState>,
     sync: bool,
+    rate: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let _operation = state.operations.read().await;
+    if let Some(rate) = rate {
+        if sync {
+            return Err("请分别保存汇率或同步报价。".into());
+        }
+        return crate::usage::update_catalog(&state.database.lock().unwrap(), &rate, None, None);
+    }
     let result = update_usage_catalog_impl(state.clone(), sync).await;
     if sync {
         let db = state.database.lock().unwrap();
@@ -387,9 +394,7 @@ async fn update_usage_catalog_impl(
             let rate = previous["rate"]
                 .as_str()
                 .ok_or("暂时无法获取汇率，请稍后重试。")?;
-            let date = previous["rateDate"]
-                .as_str()
-                .ok_or("暂时无法获取汇率，请稍后重试。")?;
+            let date = previous["rateDate"].as_str().unwrap_or("");
             (rate.to_owned(), date.to_owned())
         }
     };
