@@ -97,6 +97,55 @@ enum CloseBehavior {
 struct Shortcuts {
     new_draft: String,
     optimize: String,
+    #[serde(default = "shortcut_rename")]
+    rename: String,
+    #[serde(default = "shortcut_pin")]
+    pin: String,
+    #[serde(default = "shortcut_favorite")]
+    favorite: String,
+    #[serde(default = "shortcut_delete")]
+    delete: String,
+    #[serde(default = "shortcut_copy_result")]
+    copy_result: String,
+    #[serde(default = "shortcut_history")]
+    history: String,
+}
+
+fn shortcut_rename() -> String {
+    "Ctrl+Alt+KeyR".into()
+}
+fn shortcut_pin() -> String {
+    "Ctrl+Alt+KeyP".into()
+}
+fn shortcut_favorite() -> String {
+    "Ctrl+Alt+KeyF".into()
+}
+fn shortcut_delete() -> String {
+    "Ctrl+Shift+Delete".into()
+}
+fn shortcut_copy_result() -> String {
+    "Ctrl+Alt+KeyC".into()
+}
+fn shortcut_history() -> String {
+    "Ctrl+Alt+KeyH".into()
+}
+fn invalid_shortcuts(keys: &Shortcuts) -> bool {
+    let values = [
+        &keys.new_draft,
+        &keys.optimize,
+        &keys.rename,
+        &keys.pin,
+        &keys.favorite,
+        &keys.delete,
+        &keys.copy_result,
+        &keys.history,
+    ];
+    values.iter().any(|value| !valid_shortcut(value))
+        || values
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != values.len()
 }
 
 fn valid_shortcut(value: &str) -> bool {
@@ -225,11 +274,7 @@ pub fn parse(input: &str) -> Result<Workspace, String> {
             .as_ref()
             .is_some_and(|id| !projects.contains(id))
     });
-    if workspace.shortcuts.as_ref().is_some_and(|keys| {
-        keys.new_draft == keys.optimize
-            || !valid_shortcut(&keys.new_draft)
-            || !valid_shortcut(&keys.optimize)
-    }) {
+    if workspace.shortcuts.as_ref().is_some_and(invalid_shortcuts) {
         return Err("快捷键配置无效或存在冲突。".into());
     }
     if workspace.schema != 1
@@ -456,11 +501,7 @@ pub(crate) fn validate_state(db: &Connection) -> Result<(), String> {
     }
     let settings: Settings = serde_json::from_value(value).map_err(|_| "设置内容无效。")?;
     if !matches!(settings.theme.as_str(), "system" | "light" | "dark")
-        || settings.shortcuts.as_ref().is_some_and(|keys| {
-            keys.new_draft == keys.optimize
-                || !valid_shortcut(&keys.new_draft)
-                || !valid_shortcut(&keys.optimize)
-        })
+        || settings.shortcuts.as_ref().is_some_and(invalid_shortcuts)
     {
         return Err("主题或快捷键设置无效。".into());
     }
@@ -721,6 +762,15 @@ mod tests {
             parse(&saved).unwrap().shortcuts.unwrap().optimize,
             "Alt+Enter"
         );
+        assert_eq!(
+            parse(&saved).unwrap().shortcuts.unwrap().rename,
+            "Ctrl+Alt+KeyR"
+        );
+        document["shortcuts"]["pin"] = serde_json::json!("Ctrl+Alt+KeyR");
+        assert!(parse(&document.to_string()).is_err());
+        document["shortcuts"]["pin"] = serde_json::json!("Alt+F4");
+        assert!(parse(&document.to_string()).is_err());
+        document["shortcuts"]["pin"] = serde_json::json!("Ctrl+Alt+KeyP");
         document["shortcuts"]["newDraft"] = serde_json::json!("Alt+Enter");
         assert!(parse(&document.to_string()).is_err());
         document["shortcuts"]["newDraft"] = serde_json::json!("Alt+F4");

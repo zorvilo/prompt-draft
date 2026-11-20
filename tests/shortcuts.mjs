@@ -35,3 +35,6 @@ assert.deepEqual(shortcutLabels("Alt+Digit1"), ["Alt", "1"]);
 console.log(
   "PASS shortcut validation, reserved keys, exact modifier matching and display",
 );
+
+assert.equal(new Set(Object.values(defaultShortcuts)).size, Object.keys(defaultShortcuts).length);
+for (const value of Object.values(defaultShortcuts)) assert.equal(shortcutError(value), "", value);

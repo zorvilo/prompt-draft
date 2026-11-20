@@ -3,10 +3,12 @@ import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   ArrowLeft,
   ChevronRight,
+  ChevronDown,
   Copy,
   Download,
   FileText,
   Folder,
+  FolderMinus,
   History,
   Maximize2,
   Menu,
@@ -21,6 +23,7 @@ import {
 } from "lucide-vue-next";
 import {
   NText,
+  NTooltip,
   NButton,
   NButtonGroup,
   NCheckbox,
@@ -38,7 +41,11 @@ import {
   type DropdownOption,
 } from "naive-ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { defaultShortcuts, shortcutFromEvent } from "../settings/shortcuts";
+import {
+  defaultShortcuts,
+  shortcutFromEvent,
+  shortcutLabels,
+} from "../settings/shortcuts";
 import { diffChars } from "diff";
 import MarkdownIt from "markdown-it";
 import { open, save as pickSave } from "@tauri-apps/plugin-dialog";
@@ -65,6 +72,9 @@ import {
   type Version,
   type Workspace,
 } from "../../lib/tauri";
+import { createDraftRequests } from "./draftRequests";
+import { routeTemplateWheel } from "./templateWheel";
+import { duplicateDraft } from "./duplicateDraft";
 import ResultComparison from "./ResultComparison.vue";
 import type { useWorkspace } from "./workspace";
 
@@ -82,6 +92,9 @@ const {
   restoreBackup,
   save,
 } = workspace;
+const draftProject = computed(() =>
+  data.value.projects.find((project) => project.id === draft.value?.projectId),
+);
 const dialog = useDialog();
 const message = useMessage();
 const usageCatalog = ref(false);
@@ -151,6 +164,7 @@ const resultModes = [
   { value: "compare", label: "对比" },
 ] as const;
 const showResult = ref(false);
+const keyboardNavigation = ref(false);
 const resultMode = ref<(typeof resultModes)[number]["value"]>("preview");
 const markdown = new MarkdownIt({ html: false, breaks: true });
 markdown.renderer.rules.link_open = () => "<span>";
@@ -163,9 +177,11 @@ const resultPreview = computed(() =>
     : "",
 );
 const selectedVersion = ref<Version>();
-const request = ref<{ id: string; draftId: string; text: string }>();
+const requests = createDraftRequests();
+const sendingDraftIds = computed(() => [...requests.keys()]);
+const hasRequests = computed(() => requests.size > 0);
 const activeRequest = computed(() =>
-  request.value?.draftId === draft.value?.id ? request.value : undefined,
+  draft.value ? requests.get(draft.value.id) : undefined,
 );
 const streamOutput = ref<HTMLPreElement>();
 watch(
@@ -249,11 +265,42 @@ const templateFields = [
 const templatePreviewOpen = ref({ system: false, user: false });
 watch(editingTemplate, () => {
   templatePreviewOpen.value = { system: false, user: false };
+  enlargedTemplateRole.value = undefined;
 });
 const templatePreview = ref<
   Awaited<ReturnType<typeof desktop.previewTemplate>>
 >([]);
 const templatePreviewError = ref("");
+const enlargedTemplateRole = ref<"system" | "user">();
+const enlargedTemplateTitle = computed(
+  () =>
+    templateFields.find((field) => field.role === enlargedTemplateRole.value)
+      ?.label ?? "",
+);
+function templateDisplayText(role: "system" | "user") {
+  if (templatePreviewOpen.value[role])
+    return templatePreviewError.value
+      ? ""
+      : (templatePreview.value.find((item) => item.role === role)?.content ??
+          "");
+  return (
+    (role === "system"
+      ? editingTemplate.value?.content
+      : editingTemplate.value?.userContent) ?? ""
+  );
+}
+async function copyTemplateText(role: "system" | "user") {
+  const text = templateDisplayText(role);
+  if (!text) return;
+  try {
+    await writeText(text);
+    message.success(
+      "已复制" + templateFields.find((field) => field.role === role)?.label,
+    );
+  } catch (error) {
+    message.error(errorMessage(error));
+  }
+}
 const iterationInstruction =
   "对照原稿检查上一版优化稿，补齐遗漏的要求并完善表达。";
 watch(
@@ -556,13 +603,11 @@ function deleteProject(id: string) {
     "删除项目",
     "将永久删除「" + project.name + "」和其中的 " + count + " 份草稿及版本。",
     async () => {
-      if (
-        request.value &&
-        data.value.drafts.some(
-          (item) => item.id === request.value?.draftId && item.projectId === id,
-        )
-      )
-        await cancel();
+      await Promise.all(
+        data.value.drafts
+          .filter((item) => item.projectId === id)
+          .map((item) => cancel(item.id)),
+      );
       if (draft.value?.projectId === id) data.value.activeDraft = null;
       data.value.drafts = data.value.drafts.filter(
         (item) => item.projectId !== id,
@@ -584,14 +629,20 @@ function togglePin(id: string) {
   if (item) item.pinned = !item.pinned;
 }
 
-const draftMenu = ref<{ id: string; x: number; y: number }>();
+const draftMenuOpen = ref(false);
+const draftMenu = ref<{
+  id: string;
+  x: number;
+  y: number;
+  kind: "title" | "context";
+}>();
 const menuDraft = computed(() =>
   data.value.drafts.find((item) => item.id === draftMenu.value?.id),
 );
 const draftMenuOptions = computed<DropdownOption[]>(() => {
   const item = menuDraft.value;
   if (!item) return [];
-  return [
+  const options: DropdownOption[] = [
     {
       label: "重命名",
       key: "rename",
@@ -608,26 +659,157 @@ const draftMenuOptions = computed<DropdownOption[]>(() => {
       key: "favorite",
       icon: () => h(Star, { size: 14, "aria-hidden": "true" }),
     },
+    { type: "divider", key: "result-divider" },
     {
-      label: "项目",
-      key: "projects",
-      icon: () => h(Folder, { size: 14, "aria-hidden": "true" }),
-      children: [
-        { label: "未分配项目", key: "unassign", disabled: !item.projectId },
-        ...data.value.projects.map((project) => ({
-          label: project.name,
-          key: "assign:" + project.id,
-          disabled: item.projectId === project.id,
-        })),
-      ],
+      label: "复制草稿",
+      key: "duplicate",
+      icon: () => h(Copy, { size: 14, "aria-hidden": "true" }),
     },
     {
-      label: "永久删除",
+      label: "版本历史",
+      key: "history",
+      disabled: item.id !== draft.value?.id,
+      icon: () => h(History, { size: 14, "aria-hidden": "true" }),
+    },
+    { type: "divider", key: "delete-divider" },
+    {
+      label: () => h(NText, { type: "error" }, { default: () => "删除" }),
       key: "delete",
-      icon: () => h(Trash2, { size: 14, "aria-hidden": "true" }),
+      icon: () =>
+        h(
+          NText,
+          {
+            type: "error",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              lineHeight: "1",
+            },
+          },
+          { default: () => h(Trash2, { size: 14, "aria-hidden": "true" }) },
+        ),
+    },
+    { type: "divider", key: "project-divider" },
+    ...(data.value.projects.find((project) => project.id === item.projectId)
+      ? [
+          {
+            type: "render" as const,
+            key: "current-project",
+            render: () =>
+              h(
+                "div",
+                { class: "draft-menu-project" },
+                data.value.projects.find(
+                  (project) => project.id === item.projectId,
+                )?.name,
+              ),
+          },
+        ]
+      : []),
+    {
+      label: "移动到项目",
+      key: "projects",
+      disabled: !data.value.projects.length,
+      icon: () => h(Folder, { size: 14, "aria-hidden": "true" }),
+      children: data.value.projects.map((project) => ({
+        label: project.name,
+        key: "assign:" + project.id,
+        disabled: item.projectId === project.id,
+      })),
+    },
+    {
+      label: "从这个项目中移除",
+      key: "unassign",
+      disabled: !item.projectId,
+      icon: () => h(FolderMinus, { size: 14, "aria-hidden": "true" }),
     },
   ];
+  const shortcuts = { ...defaultShortcuts, ...data.value.shortcuts };
+  const keys =
+    draftMenu.value?.kind === "title"
+      ? [
+          "rename",
+          "pin",
+          "favorite",
+          "result-divider",
+          "history",
+          "project-divider",
+          "current-project",
+          "projects",
+          "unassign",
+          "delete-divider",
+          "delete",
+        ]
+      : [
+          "rename",
+          "pin",
+          "favorite",
+          "result-divider",
+          "duplicate",
+          "project-divider",
+          "projects",
+          "unassign",
+          "delete-divider",
+          "delete",
+        ];
+  const menuOptions = keys.flatMap((key) => {
+    const option = options.find((entry) => entry.key === key);
+    if (!option || (key === "unassign" && !item.projectId)) return [];
+    return [option];
+  });
+  return menuOptions.map((option) => {
+    if (
+      option.type ||
+      !["rename", "pin", "favorite", "delete", "duplicate", "history"].includes(
+        String(option.key),
+      )
+    )
+      return option;
+    const label = option.label;
+    return {
+      ...option,
+      label: () =>
+        h("div", { class: "draft-menu-label" }, [
+          typeof label === "function" ? label() : label,
+          h(
+            "span",
+            { class: "draft-menu-shortcut", "aria-hidden": "true" },
+            shortcutLabels(
+              shortcuts[
+                (option.key === "duplicate" ? "copyResult" : option.key) as
+                  | "rename"
+                  | "pin"
+                  | "favorite"
+                  | "delete"
+                  | "copyResult"
+                  | "history"
+              ],
+            ).join("+"),
+          ),
+        ]),
+    };
+  });
 });
+
+function openTitleMenu(event: MouseEvent) {
+  if (!draft.value) return;
+  if (
+    draftMenuOpen.value &&
+    draftMenu.value?.kind === "title" &&
+    draftMenu.value.id === draft.value.id
+  ) {
+    closeDraftMenu();
+    return;
+  }
+  const target = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  draftMenu.value = {
+    id: draft.value.id,
+    x: target.left,
+    y: target.bottom + 4,
+    kind: "title",
+  };
+  draftMenuOpen.value = true;
+}
 
 function openDraftMenu(id: string, event: MouseEvent) {
   const target = (
@@ -638,11 +820,13 @@ function openDraftMenu(id: string, event: MouseEvent) {
     id,
     x: byKeyboard ? (target?.left ?? 0) + 12 : event.clientX,
     y: byKeyboard ? (target?.bottom ?? 0) : event.clientY,
+    kind: "context",
   };
+  draftMenuOpen.value = true;
 }
 
 function closeDraftMenu() {
-  draftMenu.value = undefined;
+  draftMenuOpen.value = false;
 }
 
 function renameDraft(id: string, title: string) {
@@ -676,11 +860,22 @@ function renameDraft(id: string, title: string) {
   });
 }
 
+function copyDraft(item: NonNullable<typeof draft.value>) {
+  const copy = duplicateDraft(item);
+  data.value.drafts.push(copy);
+  loadDraft(copy.id);
+  message.success("已创建草稿副本");
+}
+
 function runDraftMenu(key: string | number) {
   const item = menuDraft.value;
   closeDraftMenu();
   if (!item || typeof key !== "string") return;
   switch (key) {
+    case "duplicate": {
+      copyDraft(item);
+      break;
+    }
     case "rename":
       renameDraft(item.id, item.title);
       break;
@@ -692,6 +887,9 @@ function runDraftMenu(key: string | number) {
       break;
     case "delete":
       deleteDraft(item.id);
+      break;
+    case "history":
+      if (item.id === draft.value?.id) history();
       break;
     case "unassign":
       item.projectId = null;
@@ -712,7 +910,7 @@ function deleteDraft(id: string) {
     "删除草稿",
     "将永久删除「" + (item.title || "未命名草稿") + "」和它的全部版本。",
     async () => {
-      if (request.value?.draftId === item.id) await cancel();
+      await cancel(item.id);
       if (data.value.activeDraft === item.id) data.value.activeDraft = null;
       data.value.drafts = data.value.drafts.filter(
         (entry) => entry.id !== item.id,
@@ -748,7 +946,7 @@ function confirm(
 
 async function optimize(isFollowup = false) {
   const item = draft.value;
-  if (!item || !item.source.trim() || request.value) return;
+  if (!item || !item.source.trim() || requests.has(item.id)) return;
   if (utilities.value) return;
   const template = selectedTemplate.value;
   if (!template) {
@@ -804,13 +1002,12 @@ async function optimize(isFollowup = false) {
   const activeProfile = { ...profile.value, model: selectedModel.value };
   const source = item.source;
   const id = crypto.randomUUID();
-  request.value = { id, draftId: item.id, text: "" };
+  requests.set(item.id, { id, text: "" });
   try {
     const available = await desktop.hasKey(activeProfile);
     if (
-      request.value?.id !== id ||
-      draft.value?.id !== item.id ||
-      utilities.value
+      !requests.isCurrent(item.id, id) ||
+      !data.value.drafts.some((entry) => entry.id === item.id)
     )
       return;
     if (!available) {
@@ -818,7 +1015,7 @@ async function optimize(isFollowup = false) {
       openUtilities("model");
       return;
     }
-    resultMode.value = "preview";
+    if (draft.value?.id === item.id) resultMode.value = "preview";
     const renderRevision = followupRevision ?? revision;
     const result = await desktop.optimize(
       activeProfile,
@@ -832,10 +1029,10 @@ async function optimize(isFollowup = false) {
         : undefined,
       followupRevision,
       (text) => {
-        if (request.value?.id === id) request.value.text += text;
+        requests.append(item.id, id, text);
       },
     );
-    if (request.value?.id !== id) return;
+    if (!requests.isCurrent(item.id, id)) return;
     const current = data.value.drafts.find((entry) => entry.id === item.id);
     if (!current) return;
     const version: Version = {
@@ -865,22 +1062,22 @@ async function optimize(isFollowup = false) {
     }
     await save();
   } catch (error) {
-    if (
-      request.value?.id === id &&
-      draft.value?.id === item.id &&
-      draft.value.source === source
-    ) {
-      message.error(errorMessage(error), { duration: 9000, closable: true });
+    if (requests.isCurrent(item.id, id)) {
+      message.error((item.title || "未命名草稿") + "：" + errorMessage(error), {
+        duration: 9000,
+        closable: true,
+      });
     }
   } finally {
-    if (request.value?.id === id) request.value = undefined;
+    requests.finish(item.id, id);
   }
 }
 
-async function cancel() {
-  const id = request.value?.id;
+async function cancel(draftId = draft.value?.id) {
+  if (!draftId) return;
+  const id = requests.get(draftId)?.id;
   if (!id) return;
-  request.value = undefined;
+  requests.finish(draftId, id);
   try {
     await desktop.cancel(id);
   } catch (error) {
@@ -968,7 +1165,7 @@ function backup() {
         ],
       ),
     async () => {
-      if (request.value) throw new Error("请等待当前优化完成后再备份。");
+      if (hasRequests.value) throw new Error("请等待当前优化完成后再备份。");
       await save();
       if (saveError.value) throw new Error(saveError.value);
       const path = await pickSave({
@@ -985,7 +1182,7 @@ function backup() {
 
 async function restore() {
   try {
-    if (request.value) throw new Error("请等待当前优化完成后再恢复。");
+    if (hasRequests.value) throw new Error("请等待当前优化完成后再恢复。");
     const path = await open({
       multiple: false,
       filters: [{ name: "词稿完整备份", extensions: ["json"] }],
@@ -1072,7 +1269,7 @@ async function restore() {
           ],
         ),
       async () => {
-        if (request.value) throw new Error("请等待当前优化完成后再恢复。");
+        if (hasRequests.value) throw new Error("请等待当前优化完成后再恢复。");
         await save();
         if (saveError.value) throw new Error(saveError.value);
         await restoreBackup(path);
@@ -1143,7 +1340,8 @@ async function completeClose(action: "hide" | "exit") {
     if (rememberClose.value) data.value.closeBehavior = action;
     await save();
     if (saveError.value) throw new Error(saveError.value);
-    if (action === "exit" && request.value) await cancel();
+    if (action === "exit")
+      await Promise.all([...requests.keys()].map((id) => cancel(id)));
     await desktop.windowAction(action);
     showClose.value = false;
   } catch (error) {
@@ -1157,7 +1355,7 @@ function requestClose(forceExit = false) {
   if (showClose.value || closing.value) return;
   rememberClose.value = false;
   const action = forceExit ? "exit" : (data.value.closeBehavior ?? "ask");
-  if (action === "ask" || (action === "exit" && request.value)) {
+  if (action === "ask" || (action === "exit" && hasRequests.value)) {
     showClose.value = true;
   } else {
     void completeClose(action);
@@ -1175,7 +1373,7 @@ function shortcut(event: KeyboardEvent) {
   )
     return;
   const binding = shortcutFromEvent(event);
-  const shortcuts = data.value.shortcuts ?? defaultShortcuts;
+  const shortcuts = { ...defaultShortcuts, ...data.value.shortcuts };
   if (binding === shortcuts.newDraft) {
     event.preventDefault();
     create();
@@ -1183,6 +1381,34 @@ function shortcut(event: KeyboardEvent) {
   if (binding === shortcuts.optimize) {
     event.preventDefault();
     void optimize();
+  }
+  const item = draft.value;
+  if (!item || utilities.value) return;
+  const action = Object.entries(shortcuts).find(
+    ([, key]) => key === binding,
+  )?.[0];
+  if (!action || action === "newDraft" || action === "optimize") return;
+  event.preventDefault();
+  closeDraftMenu();
+  switch (action) {
+    case "rename":
+      renameDraft(item.id, item.title);
+      break;
+    case "pin":
+      togglePin(item.id);
+      break;
+    case "favorite":
+      item.favorite = !item.favorite;
+      break;
+    case "delete":
+      deleteDraft(item.id);
+      break;
+    case "copyResult":
+      copyDraft(item);
+      break;
+    case "history":
+      history();
+      break;
   }
 }
 let disposed = false;
@@ -1221,7 +1447,14 @@ onUnmounted(() => {
 <template>
   <div
     class="shell"
+    @pointerdown.capture="keyboardNavigation = false"
+    @keydown.capture="
+      (event) => {
+        if (event.key === 'Tab') keyboardNavigation = true;
+      }
+    "
     :class="{
+      'keyboard-navigation': keyboardNavigation,
       'template-editor-open': utilities === 'templates' && editingTemplate,
       'settings-open': utilities === 'settings',
       'utilities-open': !!utilities,
@@ -1249,6 +1482,7 @@ onUnmounted(() => {
         class="desktop-library"
         :data="data"
         :active-utility="utilities"
+        :sending-draft-ids="sendingDraftIds"
         v-model:recent-expanded="recentExpanded"
         v-model:pinned-expanded="pinnedExpanded"
         v-model:list-mode="draftListMode"
@@ -1374,26 +1608,52 @@ onUnmounted(() => {
                     :label="field.label"
                     :label-for="field.id"
                   >
-                    <div class="template-field">
-                      <n-button
-                        class="template-preview-toggle"
-                        size="tiny"
-                        :secondary="templatePreviewOpen[field.role]"
-                        :quaternary="!templatePreviewOpen[field.role]"
-                        :aria-label="field.label + '预览'"
-                        :aria-pressed="templatePreviewOpen[field.role]"
-                        @click="
-                          templatePreviewOpen[field.role] =
-                            !templatePreviewOpen[field.role]
-                        "
-                        >{{
-                          templatePreviewOpen[field.role]
-                            ? viewingBuiltin
-                              ? "返回原文"
-                              : "返回编辑"
-                            : "预览"
-                        }}</n-button
-                      >
+                    <div
+                      class="template-field"
+                      @wheel.capture="routeTemplateWheel"
+                    >
+                      <div class="template-field-actions">
+                        <n-button
+                          size="tiny"
+                          :secondary="templatePreviewOpen[field.role]"
+                          :quaternary="!templatePreviewOpen[field.role]"
+                          :aria-label="field.label + '预览'"
+                          :aria-pressed="templatePreviewOpen[field.role]"
+                          @click="
+                            templatePreviewOpen[field.role] =
+                              !templatePreviewOpen[field.role]
+                          "
+                          >{{
+                            templatePreviewOpen[field.role]
+                              ? viewingBuiltin
+                                ? "返回原文"
+                                : "返回编辑"
+                              : "预览"
+                          }}</n-button
+                        >
+                        <n-button
+                          quaternary
+                          size="small"
+                          :disabled="!templateDisplayText(field.role)"
+                          :aria-label="'复制' + field.label"
+                          :title="'复制' + field.label"
+                          @click="copyTemplateText(field.role)"
+                        >
+                          <template #icon><Copy aria-hidden="true" /></template>
+                        </n-button>
+                        <n-button
+                          quaternary
+                          size="small"
+                          :disabled="!templateDisplayText(field.role)"
+                          :aria-label="'放大查看' + field.label"
+                          :title="'放大查看' + field.label"
+                          @click="enlargedTemplateRole = field.role"
+                        >
+                          <template #icon
+                            ><Maximize2 aria-hidden="true"
+                          /></template>
+                        </n-button>
+                      </div>
                       <div
                         v-if="templatePreviewOpen[field.role]"
                         :id="field.id"
@@ -1434,16 +1694,11 @@ onUnmounted(() => {
                       :maxlength="500"
                     />
                   </n-form-item>
-                  <div class="template-actions">
-                    <n-button @click="editingTemplate = undefined">{{
-                      viewingBuiltin ? "关闭" : "取消"
-                    }}</n-button>
-                    <n-button
-                      v-if="!viewingBuiltin"
-                      type="primary"
-                      attr-type="submit"
-                      >保存</n-button
+                  <div v-if="!viewingBuiltin" class="template-actions">
+                    <n-button @click="editingTemplate = undefined"
+                      >取消</n-button
                     >
+                    <n-button type="primary" attr-type="submit">保存</n-button>
                   </div>
                 </n-form>
               </div>
@@ -1550,13 +1805,39 @@ onUnmounted(() => {
         </div>
         <template v-else>
           <div class="draft-toolbar">
-            <input
-              v-model="draft.title"
-              class="draft-title"
-              aria-label="草稿名称"
-              maxlength="100"
-              placeholder="未命名草稿"
-            />
+            <button
+              type="button"
+              class="draft-heading"
+              aria-haspopup="menu"
+              :aria-expanded="
+                draftMenuOpen &&
+                draftMenu?.kind === 'title' &&
+                draftMenu.id === draft.id
+              "
+              @click.stop="openTitleMenu"
+            >
+              <n-tooltip
+                v-if="draftProject"
+                trigger="hover"
+                :style="{ maxWidth: '300px' }"
+              >
+                <template #trigger>
+                  <span
+                    class="draft-project-icon"
+                    :aria-label="'所属项目：' + draftProject.name"
+                  >
+                    <Folder :size="18" aria-hidden="true" />
+                  </span>
+                </template>
+                所属项目：{{ draftProject.name }}
+              </n-tooltip>
+              <span class="draft-title">{{ draft.title || "未命名草稿" }}</span>
+              <ChevronDown
+                :size="16"
+                class="draft-title-chevron"
+                aria-hidden="true"
+              />
+            </button>
             <div class="draft-tools">
               <n-button
                 quaternary
@@ -1713,20 +1994,20 @@ onUnmounted(() => {
                         ? '继续追问，例如：把第二步写具体一点'
                         : '先生成优化稿，再继续追问'
                     "
-                    :disabled="!!request || !draft.result.trim()"
+                    :disabled="!!activeRequest || !draft.result.trim()"
                   />
                   <n-select
                     aria-label="迭代优化模板"
                     placeholder="暂无迭代模板"
                     :value="iterationTemplate?.id ?? null"
                     :options="iterationOptions"
-                    :disabled="!!request || !iterationOptions.length"
+                    :disabled="!!activeRequest || !iterationOptions.length"
                     @update:value="(id) => (iterationTemplateId = id)"
                   />
                   <n-button
                     attr-type="submit"
                     :disabled="
-                      !!request ||
+                      !!activeRequest ||
                       !selectedTemplate ||
                       !iterationTemplate ||
                       !draft.source.trim() ||
@@ -1748,7 +2029,7 @@ onUnmounted(() => {
                   aria-label="模板分类"
                   v-model:value="draftCategory"
                   :options="categoryOptions"
-                  :disabled="!!request"
+                  :disabled="!!activeRequest"
                 />
                 <n-select
                   class="workbench-template"
@@ -1756,7 +2037,7 @@ onUnmounted(() => {
                   :value="selectedTemplate?.id ?? null"
                   :options="templateOptions"
                   placeholder="选择模板"
-                  :disabled="!!request || !draftTemplates.length"
+                  :disabled="!!activeRequest || !draftTemplates.length"
                   @update:value="(id) => (templateId = id)"
                 />
                 <n-select
@@ -1767,7 +2048,7 @@ onUnmounted(() => {
                   :options="
                     models.map((item) => ({ label: item.name, value: item.id }))
                   "
-                  :disabled="!!request || !models.length"
+                  :disabled="!!activeRequest || !models.length"
                   @update:value="(id) => (data.activeProfile = id)"
                 />
                 <n-select
@@ -1777,7 +2058,7 @@ onUnmounted(() => {
                   filterable
                   :value="selectedModel"
                   :options="modelOptions"
-                  :disabled="!profile || !!request"
+                  :disabled="!profile || !!activeRequest"
                   @update:value="(model) => (selectedModel = model)"
                 />
                 <n-button
@@ -1786,7 +2067,7 @@ onUnmounted(() => {
                   @click="openUtilities('model')"
                   >添加供应商</n-button
                 >
-                <n-button v-if="request" @click="cancel"
+                <n-button v-if="activeRequest" @click="cancel()"
                   ><template #icon><Square /></template>取消优化</n-button
                 >
                 <n-button
@@ -1812,7 +2093,7 @@ onUnmounted(() => {
       size="small"
       :theme-overrides="{ fontSizeSmall: '12px', optionHeightSmall: '28px' }"
       placement="bottom-start"
-      :show="!!menuDraft"
+      :show="draftMenuOpen && !!menuDraft"
       :x="draftMenu?.x"
       :y="draftMenu?.y"
       :options="draftMenuOptions"
@@ -1822,6 +2103,76 @@ onUnmounted(() => {
     >
       <span aria-hidden="true"></span>
     </n-dropdown>
+    <n-modal
+      :show="!!enlargedTemplateRole"
+      @update:show="
+        (show) => {
+          if (!show) enlargedTemplateRole = undefined;
+        }
+      "
+      preset="card"
+      :title="enlargedTemplateTitle"
+      to=".app-root"
+      class="result-dialog"
+      closable
+    >
+      <template #header-extra>
+        <n-button
+          v-if="enlargedTemplateRole"
+          size="tiny"
+          :secondary="templatePreviewOpen[enlargedTemplateRole]"
+          :quaternary="!templatePreviewOpen[enlargedTemplateRole]"
+          :aria-label="enlargedTemplateTitle + '预览'"
+          :aria-pressed="templatePreviewOpen[enlargedTemplateRole]"
+          @click="
+            templatePreviewOpen[enlargedTemplateRole] =
+              !templatePreviewOpen[enlargedTemplateRole]
+          "
+          >{{
+            templatePreviewOpen[enlargedTemplateRole]
+              ? viewingBuiltin
+                ? "返回原文"
+                : "返回编辑"
+              : "预览"
+          }}</n-button
+        >
+
+        <n-button
+          quaternary
+          size="small"
+          :disabled="
+            !enlargedTemplateRole || !templateDisplayText(enlargedTemplateRole)
+          "
+          :aria-label="'复制' + enlargedTemplateTitle"
+          :title="'复制' + enlargedTemplateTitle"
+          @click="
+            enlargedTemplateRole && copyTemplateText(enlargedTemplateRole)
+          "
+        >
+          <template #icon><Copy aria-hidden="true" /></template>
+        </n-button>
+      </template>
+      <div
+        v-if="
+          enlargedTemplateRole &&
+          templatePreviewOpen[enlargedTemplateRole] &&
+          !templatePreviewError
+        "
+        class="result-preview result-content"
+        tabindex="0"
+        :aria-label="enlargedTemplateTitle + '预览'"
+        v-html="markdown.render(templateDisplayText(enlargedTemplateRole))"
+      ></div>
+      <pre
+        v-else-if="enlargedTemplateRole"
+        class="result-content result-dialog-source"
+        tabindex="0"
+        :aria-label="enlargedTemplateTitle"
+        >{{
+          (templatePreviewOpen[enlargedTemplateRole] && templatePreviewError) ||
+          templateDisplayText(enlargedTemplateRole)
+        }}</pre>
+    </n-modal>
     <n-modal
       v-model:show="showResult"
       preset="card"
@@ -1869,6 +2220,7 @@ onUnmounted(() => {
         <library-panel
           :data="data"
           :active-utility="utilities"
+          :sending-draft-ids="sendingDraftIds"
           v-model:recent-expanded="recentExpanded"
           v-model:pinned-expanded="pinnedExpanded"
           v-model:list-mode="draftListMode"
@@ -1959,7 +2311,7 @@ onUnmounted(() => {
     <p class="close-window-description">
       隐藏到托盘后，词稿将继续运行。你可以点击系统托盘中的词稿图标重新打开窗口。退出程序将结束运行。
     </p>
-    <p v-if="request" class="close-window-description" role="status">
+    <p v-if="hasRequests" class="close-window-description" role="status">
       正在优化提示词。隐藏后将继续生成，退出程序会中断本次任务。
     </p>
     <n-checkbox v-model:checked="rememberClose" :disabled="closing"

@@ -45,7 +45,9 @@ export interface Workspace {
     draftListMode: "recent" | "favorites";
   };
   closeBehavior?: "ask" | "hide" | "exit";
-  shortcuts?: { newDraft: string; optimize: string };
+  shortcuts?: Partial<
+    typeof import("../features/settings/shortcuts").defaultShortcuts
+  >;
   templates?: PromptTemplate[];
   templateCategories?: Project[];
   projects: Project[];

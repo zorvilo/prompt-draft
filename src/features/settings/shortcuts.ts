@@ -1,11 +1,23 @@
 export const defaultShortcuts = {
   newDraft: "Ctrl+KeyN",
   optimize: "Ctrl+Enter",
+  rename: "Ctrl+Alt+KeyR",
+  pin: "Ctrl+Alt+KeyP",
+  favorite: "Ctrl+Alt+KeyF",
+  delete: "Ctrl+Shift+Delete",
+  copyResult: "Ctrl+Alt+KeyC",
+  history: "Ctrl+Alt+KeyH",
 };
 export type ShortcutAction = keyof typeof defaultShortcuts;
 export const shortcutActions: { id: ShortcutAction; label: string }[] = [
   { id: "newDraft", label: "新建草稿" },
   { id: "optimize", label: "优化当前提示词" },
+  { id: "rename", label: "重命名" },
+  { id: "pin", label: "置顶 / 取消置顶" },
+  { id: "favorite", label: "收藏 / 取消收藏" },
+  { id: "delete", label: "删除草稿" },
+  { id: "copyResult", label: "复制草稿" },
+  { id: "history", label: "版本历史" },
 ];
 
 export function shortcutFromEvent(event: KeyboardEvent): string {

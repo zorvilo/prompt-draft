@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { createDraftRequests } from "../src/features/workspace/draftRequests.ts";
+
+const requests = createDraftRequests();
+requests.set("a", { id: "a1", text: "" });
+requests.set("b", { id: "b1", text: "" });
+requests.append("b", "b1", "B");
+requests.append("a", "a1", "A");
+assert.equal(requests.get("a").text, "A");
+assert.equal(requests.get("b").text, "B");
+requests.finish("a", "a1");
+assert.equal(requests.has("a"), false);
+assert.equal(requests.isCurrent("b", "b1"), true);
+requests.set("a", { id: "a2", text: "" });
+requests.append("a", "a1", "late");
+requests.finish("a", "a1");
+assert.equal(requests.isCurrent("a", "a2"), true);
+assert.equal(requests.get("a").text, "");
+requests.finish("b", "b1");
+assert.equal(requests.isCurrent("a", "a2"), true);
+console.log("draft requests passed");

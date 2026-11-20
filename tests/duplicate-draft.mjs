@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { duplicateDraft } from "../src/features/workspace/duplicateDraft.ts";
+const source = { id: "a", title: "测试", source: "原稿", result: "优化稿", projectId: "p", favorite: true, pinned: true, question: "问题", versions: [{ id: "v" }], opened: 1 };
+const original = structuredClone(source);
+const copy = duplicateDraft(source);
+assert.notEqual(copy.id, source.id);
+assert.equal(copy.title, "测试 副本");
+for (const key of ["source", "result", "projectId"]) assert.equal(copy[key], source[key]);
+assert.deepEqual(copy.versions, []);
+assert.equal(copy.pinned, false);
+assert.equal(copy.favorite, false);
+assert.equal(copy.question, null);
+copy.versions.push({ id: "new" });
+assert.deepEqual(source, original);
+assert.equal(duplicateDraft({ ...source, title: "" }).title, "未命名草稿 副本");
+assert.equal(duplicateDraft({ ...source, title: "长".repeat(100) }).title.length, 100);
+console.log("duplicate draft passed");

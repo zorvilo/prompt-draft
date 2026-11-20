@@ -49,11 +49,13 @@ function capture(event: KeyboardEvent) {
   if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
   candidate.value = shortcutFromEvent(event);
   error.value = shortcutError(candidate.value);
-  const other = shortcutActions.find((item) => item.id !== recording.value)!;
-  if (
-    !error.value &&
-    candidate.value === (props.data.shortcuts ?? defaultShortcuts)[other.id]
-  )
+  const other = shortcutActions.find(
+    (item) =>
+      item.id !== recording.value &&
+      candidate.value ===
+        { ...defaultShortcuts, ...props.data.shortcuts }[item.id],
+  );
+  if (!error.value && other)
     error.value = "与「" + other.label + "」冲突，请换一个组合。";
 }
 async function update(value: NonNullable<Workspace["shortcuts"]>) {
@@ -69,10 +71,11 @@ async function update(value: NonNullable<Workspace["shortcuts"]>) {
 }
 function restore(action: ShortcutAction) {
   const next = {
-    ...(props.data.shortcuts ?? defaultShortcuts),
+    ...defaultShortcuts,
+    ...props.data.shortcuts,
     [action]: defaultShortcuts[action],
   };
-  if (next.newDraft === next.optimize) {
+  if (new Set(Object.values(next)).size !== Object.values(next).length) {
     message.warning("默认快捷键已被另一操作使用，请先调整该操作。");
     return;
   }
@@ -119,7 +122,7 @@ onUnmounted(() => window.removeEventListener("keydown", capture, true));
                   v-for="key in shortcutLabels(
                     recording === action.id
                       ? candidate
-                      : (data.shortcuts ?? defaultShortcuts)[action.id],
+                      : { ...defaultShortcuts, ...data.shortcuts }[action.id],
                   )"
                   :key="key"
                   >{{ key }}</kbd
@@ -132,7 +135,7 @@ onUnmounted(() => window.removeEventListener("keydown", capture, true));
               :disabled="
                 saving ||
                 recording === action.id ||
-                (data.shortcuts ?? defaultShortcuts)[action.id] ===
+                { ...defaultShortcuts, ...data.shortcuts }[action.id] ===
                   defaultShortcuts[action.id]
               "
               @click="restore(action.id)"
@@ -157,7 +160,7 @@ onUnmounted(() => window.removeEventListener("keydown", capture, true));
               :disabled="!candidate || !!error"
               @click="
                 update({
-                  ...(data.shortcuts ?? defaultShortcuts),
+                  ...{ ...defaultShortcuts, ...data.shortcuts },
                   [action.id]: candidate,
                 })
               "

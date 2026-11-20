@@ -10,6 +10,7 @@ import {
   Cpu,
   Settings,
   Folder,
+  LoaderCircle,
   Pin,
   PinOff,
   Plus,
@@ -22,6 +23,7 @@ import { desktop, type Workspace } from "../../lib/tauri";
 
 const props = defineProps<{
   data: Workspace;
+  sendingDraftIds: string[];
   activeUtility?: "projects" | "model" | "settings" | "templates" | "usage";
 }>();
 const todayCost = ref<string>("—");
@@ -247,6 +249,7 @@ const draftSections = computed(() => {
                   ? 'true'
                   : undefined
               "
+              :aria-busy="sendingDraftIds.includes(item.id)"
               @click="emit('open', item.id)"
             >
               <span class="draft-row-label">
@@ -264,6 +267,15 @@ const draftSections = computed(() => {
                       : "未分配项目"
                   }}
                 </small>
+              </span>
+              <span
+                v-if="sendingDraftIds.includes(item.id)"
+                class="draft-sending"
+                role="status"
+                aria-label="正在发送或处理"
+                title="正在发送或处理"
+              >
+                <LoaderCircle :size="16" aria-hidden="true" />
               </span>
             </button>
             <div class="draft-row-actions">
@@ -354,6 +366,29 @@ const draftSections = computed(() => {
 </template>
 
 <style scoped>
+.draft-row-label {
+  flex: 1;
+}
+.draft-sending {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
+}
+.draft-sending svg {
+  animation: draft-sending-spin 1s linear infinite;
+}
+@keyframes draft-sending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .draft-sending svg {
+    animation: none;
+  }
+}
+
 .library-utilities button {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
