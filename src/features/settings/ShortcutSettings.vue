@@ -20,9 +20,12 @@ const props = defineProps<{
 const message = useMessage();
 const recording = ref<ShortcutAction>();
 const candidate = ref("");
+const feedbackAction = ref<ShortcutAction>();
 const error = ref("");
 const saving = ref(false);
 function start(action: ShortcutAction) {
+  if (saving.value) return;
+  feedbackAction.value = action;
   recording.value = action;
   candidate.value = "";
   error.value = "";
@@ -44,6 +47,7 @@ function capture(event: KeyboardEvent) {
   if (event.repeat || saving.value) return;
   if (event.key === "Escape") {
     recording.value = undefined;
+    feedbackAction.value = undefined;
     return;
   }
   if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
@@ -63,11 +67,28 @@ async function update(value: NonNullable<Workspace["shortcuts"]>) {
   try {
     if (await props.updateShortcuts(value)) {
       recording.value = undefined;
+      feedbackAction.value = undefined;
       message.success("快捷键已保存");
+    } else {
+      error.value = "保存失败，原快捷键已保留，请重新录入后重试。";
     }
+  } catch {
+    error.value = "保存失败，原快捷键已保留，请重新录入后重试。";
+    message.error(error.value);
   } finally {
     saving.value = false;
   }
+}
+async function finish(action: ShortcutAction) {
+  if (recording.value !== action || saving.value) return;
+  recording.value = undefined;
+  if (error.value) return;
+  const current = { ...defaultShortcuts, ...props.data.shortcuts };
+  if (!candidate.value || candidate.value === current[action]) {
+    feedbackAction.value = undefined;
+    return;
+  }
+  await update({ ...current, [action]: candidate.value });
 }
 function restore(action: ShortcutAction) {
   const next = {
@@ -107,12 +128,17 @@ onUnmounted(() => window.removeEventListener("keydown", capture, true));
           <div class="shortcut-actions">
             <n-button
               class="shortcut-recorder"
-              :class="{ 'is-recording': recording === action.id }"
+              :class="{
+                'is-recording': recording === action.id,
+                'has-error': feedbackAction === action.id && !!error,
+              }"
+              :aria-invalid="feedbackAction === action.id && !!error"
               :aria-label="'修改' + action.label + '快捷键'"
               :aria-pressed="recording === action.id"
               :disabled="saving"
               title="点击修改快捷键"
               @click="start(action.id)"
+              @blur="finish(action.id)"
             >
               <span v-if="recording === action.id && !candidate"
                 >请按下组合键</span
@@ -143,35 +169,15 @@ onUnmounted(() => window.removeEventListener("keydown", capture, true));
             >
           </div>
         </div>
-        <div v-if="recording === action.id" class="shortcut-feedback">
+        <div v-if="feedbackAction === action.id" class="shortcut-feedback">
           <p :class="{ 'shortcut-error': error }" role="status">
-            {{ error || "按 Esc 取消录制，或点击下方按钮保存。" }}
+            {{
+              error ||
+              (saving ? "正在保存…" : "移出输入框自动保存，按 Esc 取消。")
+            }}
           </p>
-          <div class="shortcut-actions">
-            <n-button
-              size="small"
-              :disabled="saving"
-              @click="recording = undefined"
-              >取消</n-button
-            ><n-button
-              size="small"
-              type="primary"
-              :loading="saving"
-              :disabled="!candidate || !!error"
-              @click="
-                update({
-                  ...{ ...defaultShortcuts, ...data.shortcuts },
-                  [action.id]: candidate,
-                })
-              "
-              >保存</n-button
-            >
-          </div>
         </div>
       </div>
     </div>
-    <p class="preference-caption">
-      点击快捷键修改，仅在词稿窗口内生效。使用 Ctrl 或 Alt 与普通按键组合。
-    </p>
   </section>
 </template>

@@ -2,6 +2,7 @@
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   ArrowLeft,
+  ArrowUp,
   ChevronRight,
   ChevronDown,
   Copy,
@@ -16,7 +17,6 @@ import {
   Pin,
   PinOff,
   Plus,
-  Send,
   Square,
   Star,
   Trash2,
@@ -50,6 +50,7 @@ import { diffChars } from "diff";
 import MarkdownIt from "markdown-it";
 import { open, save as pickSave } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import appIcon from "../../../src-tauri/icons/icon.png";
 import WindowTitlebar from "../../components/WindowTitlebar.vue";
 import LibraryPanel from "../library/LibraryPanel.vue";
 import ProjectsPanel from "../library/ProjectsPanel.vue";
@@ -74,6 +75,8 @@ import {
 } from "../../lib/tauri";
 import { createDraftRequests } from "./draftRequests";
 import { routeTemplateWheel } from "./templateWheel";
+import { draftCandidates, selectCandidate } from "./draftCandidates";
+import { buildRevisionMessage } from "./revisionMessage";
 import { duplicateDraft } from "./duplicateDraft";
 import ResultComparison from "./ResultComparison.vue";
 import type { useWorkspace } from "./workspace";
@@ -160,7 +163,7 @@ const expandedProjects = uiSetting("expandedProjects");
 const draftListMode = uiSetting("draftListMode");
 const resultModes = [
   { value: "preview", label: "预览" },
-  { value: "source", label: "原文" },
+  { value: "source", label: "编辑" },
   { value: "compare", label: "对比" },
 ] as const;
 const showResult = ref(false);
@@ -240,8 +243,22 @@ const selectedTemplate = computed(
     draftTemplates.value[0],
 );
 const templateOptions = computed(() =>
-  draftTemplates.value.map((item) => ({ label: item.name, value: item.id })),
+  categoryOptions.value
+    .map((category) => ({
+      label: category.label,
+      key: category.value,
+      children: templateList.value
+        .filter((item) => (item.category ?? "basic") === category.value)
+        .map((item) => ({ label: item.name, key: item.id })),
+    }))
+    .filter((group) => group.children.length),
 );
+function selectOptimizationTemplate(id: string) {
+  const template = templateList.value.find((item) => item.id === id);
+  if (!template || template.category === "iteration") return;
+  draftCategory.value = template.category ?? "basic";
+  templateId.value = id;
+}
 const editingTemplate = ref<PromptTemplate>();
 const viewingBuiltin = computed(
   () => !!editingTemplate.value && isBuiltinTemplate(editingTemplate.value.id),
@@ -347,14 +364,36 @@ watch(
   },
 );
 const followup = ref("");
-watch([() => draft.value?.id, () => selectedTemplate.value?.id], () => {
-  followup.value = "";
-});
+const isIterating = computed(() => !!draft.value?.result.trim());
+const candidates = computed(() =>
+  draft.value ? draftCandidates(draft.value) : [],
+);
+const candidateIndex = computed(() =>
+  candidates.value.findIndex(
+    (version) => version.result === draft.value?.result,
+  ),
+);
+async function switchCandidate(index: number) {
+  const item = draft.value;
+  const candidate = candidates.value[index];
+  if (!item || !candidate || requests.has(item.id)) return;
+  selectCandidate(item, candidate);
+  resultMode.value = "preview";
+  await save();
+}
+const showOriginal = ref(false);
+watch(
+  () => draft.value?.id,
+  () => {
+    followup.value = "";
+  },
+);
 watch(
   () => draft.value?.id,
   () => {
     resultMode.value = "preview";
     showResult.value = false;
+    showOriginal.value = false;
   },
 );
 const selectedModel = ref<string | null>(null);
@@ -374,9 +413,18 @@ watch(
 const sourceCount = computed(
   () => Array.from(draft.value?.source ?? "").length,
 );
+const comparisonSource = computed(() => {
+  const item = draft.value;
+  if (!item) return "";
+  const latest = item.versions[0];
+  if (latest?.result !== item.result) return latest?.result ?? item.source;
+  return item.versions[1]?.result ?? item.source;
+});
 const changes = computed(() => {
   if (resultMode.value !== "compare" || !draft.value) return [];
-  return diffChars(draft.value.source, draft.value.result, { timeout: 150 });
+  return diffChars(comparisonSource.value, draft.value.result, {
+    timeout: 150,
+  });
 });
 const drawerWidth = computed(() => "min(100vw, 490px)");
 
@@ -944,7 +992,7 @@ function confirm(
   });
 }
 
-async function optimize(isFollowup = false) {
+async function optimize(isFollowup = isIterating.value) {
   const item = draft.value;
   if (!item || !item.source.trim() || requests.has(item.id)) return;
   if (utilities.value) return;
@@ -960,11 +1008,7 @@ async function optimize(isFollowup = false) {
   }
   const previousResult = item.result;
   const instruction = followup.value.trim();
-  if (
-    isFollowup &&
-    (template.category !== "context" || !previousResult.trim() || !instruction)
-  )
-    return;
+  if (isFollowup && (!previousResult.trim() || !instruction)) return;
   const requestTemplate = isFollowup ? iterationTemplate.value : template;
   if (!requestTemplate) {
     message.info("请先在模板页创建一个迭代优化模板。");
@@ -975,7 +1019,7 @@ async function optimize(isFollowup = false) {
     : undefined;
 
   const revision =
-    template.strategy === "iterate"
+    !isFollowup && template.strategy === "iterate"
       ? {
           previousResult,
           instruction: iterationInstruction,
@@ -1017,6 +1061,26 @@ async function optimize(isFollowup = false) {
     }
     if (draft.value?.id === item.id) resultMode.value = "preview";
     const renderRevision = followupRevision ?? revision;
+    let userContent = requestTemplate.userContent?.trim()
+      ? renderTemplate(requestTemplate.userContent, source, renderRevision)
+      : undefined;
+    if (isFollowup) {
+      userContent = buildRevisionMessage(
+        userContent ?? "",
+        source,
+        previousResult,
+        instruction,
+        item.versions.slice(
+          Math.max(
+            0,
+            item.versions.findIndex(
+              (version) =>
+                version.result === previousResult && version.source === source,
+            ),
+          ),
+        ),
+      );
+    }
     const result = await desktop.optimize(
       activeProfile,
       source,
@@ -1024,9 +1088,7 @@ async function optimize(isFollowup = false) {
       requestTemplate.strategy,
       revision,
       renderTemplate(requestTemplate.content, source, renderRevision),
-      requestTemplate.userContent?.trim()
-        ? renderTemplate(requestTemplate.userContent, source, renderRevision)
-        : undefined,
+      userContent,
       followupRevision,
       (text) => {
         requests.append(item.id, id, text);
@@ -1045,6 +1107,19 @@ async function optimize(isFollowup = false) {
       instruction: followupRevision?.instruction,
       created: Date.now(),
     };
+    if (
+      previousResult.trim() &&
+      current.versions[0]?.result !== previousResult
+    ) {
+      current.versions.unshift({
+        id: crypto.randomUUID(),
+        source,
+        result: previousResult,
+        question: null,
+        model: "手动编辑",
+        created: Date.now(),
+      });
+    }
     current.versions.unshift(version);
     current.updated = version.created;
     if (current.source === source && current.result === previousResult) {
@@ -1303,7 +1378,12 @@ function restoreVersion() {
         created: Date.now(),
       };
       item.versions.unshift(
-        { ...previous, id: crypto.randomUUID(), created: Date.now() },
+        {
+          ...previous,
+          instruction: undefined,
+          id: crypto.randomUUID(),
+          created: Date.now(),
+        },
         snapshot,
       );
       item.source = previous.source;
@@ -1494,7 +1574,18 @@ onUnmounted(() => {
         @open="loadDraft"
         @utilities="openUtilities"
       />
-      <main class="main-surface">
+      <main
+        class="main-surface"
+        :class="{
+          'draft-surface': draft && !utilities && !showLibrary,
+          'draft-empty':
+            draft &&
+            !draft.result.trim() &&
+            !activeRequest &&
+            !utilities &&
+            !showLibrary,
+        }"
+      >
         <n-alert
           v-if="saveError"
           class="surface-alert"
@@ -1838,7 +1929,14 @@ onUnmounted(() => {
                 aria-hidden="true"
               />
             </button>
-            <div class="draft-tools">
+            <div
+              v-if="
+                draft.source.trim() ||
+                draft.result.trim() ||
+                draft.versions.length
+              "
+              class="draft-tools"
+            >
               <n-button
                 quaternary
                 size="small"
@@ -1851,22 +1949,99 @@ onUnmounted(() => {
                       draft.favorite ? 'currentColor' : 'none'
                     " /></template
               ></n-button>
-              <n-button quaternary size="small" @click="history"
-                ><template #icon><History /></template>历史</n-button
-              >
               <n-button
+                v-if="draft.versions.length"
                 quaternary
                 size="small"
-                aria-label="删除草稿"
-                @click="deleteDraft(draft.id)"
-                ><template #icon><Trash2 /></template
-              ></n-button>
+                @click="history"
+                ><template #icon><History /></template>历史</n-button
+              >
             </div>
           </div>
-          <div class="editor-spread">
-            <section class="editor">
+          <section
+            v-if="!draft.result.trim() && !activeRequest"
+            class="draft-welcome"
+          >
+            <img :src="appIcon" alt="词稿" class="draft-welcome-logo" />
+            <h1>你想写一份什么提示词？</h1>
+            <p>写下需求，生成初稿，再慢慢打磨。</p>
+          </section>
+          <div
+            v-if="draft.result.trim() || activeRequest"
+            class="editor-spread"
+            :class="{ 'has-result': draft.result.trim() }"
+          >
+            <div v-if="draft.result.trim()" class="candidate-toolbar">
+              <div class="candidate-navigation">
+                <n-button
+                  size="small"
+                  quaternary
+                  :disabled="
+                    !!activeRequest ||
+                    candidateIndex < 0 ||
+                    candidateIndex >= candidates.length - 1
+                  "
+                  @click="switchCandidate(candidateIndex + 1)"
+                  >上一版</n-button
+                >
+                <span class="candidate-count">{{
+                  candidateIndex >= 0
+                    ? `候选 ${candidates.length - candidateIndex} / ${candidates.length}`
+                    : "当前编辑稿"
+                }}</span>
+                <n-button
+                  size="small"
+                  quaternary
+                  :disabled="
+                    !!activeRequest ||
+                    !candidates.length ||
+                    candidateIndex === 0
+                  "
+                  @click="switchCandidate(Math.max(0, candidateIndex - 1))"
+                  >下一版</n-button
+                >
+              </div>
+              <div class="regenerate-controls">
+                <n-dropdown
+                  trigger="click"
+                  :options="templateOptions"
+                  :disabled="!!activeRequest || !templateOptions.length"
+                  @select="selectOptimizationTemplate"
+                >
+                  <n-button
+                    quaternary
+                    class="template-menu-trigger"
+                    aria-label="重新优化模板"
+                    aria-haspopup="menu"
+                    :disabled="!!activeRequest || !templateOptions.length"
+                  >
+                    <span>{{
+                      selectedTemplate?.name ?? "选择模板"
+                    }}</span><ChevronDown :size="14" aria-hidden="true" />
+                  </n-button>
+                </n-dropdown>
+                <n-button
+                  size="small"
+                  secondary
+                  :disabled="
+                    !!activeRequest || !selectedTemplate || !draft.source.trim()
+                  "
+                  @click="optimize(false)"
+                  >重新优化</n-button
+                >
+              </div>
+            </div>
+
+            <section
+              v-if="showOriginal && draft.result.trim()"
+              class="editor original-editor"
+            >
               <header>
-                <h2>原稿</h2>
+                <h2>
+                  {{
+                    draft.result.trim() ? "原始需求" : "你想写一份什么提示词？"
+                  }}
+                </h2>
                 <span>{{ sourceCount.toLocaleString("zh-CN") }} 字</span>
               </header>
               <textarea
@@ -1877,9 +2052,21 @@ onUnmounted(() => {
                 placeholder="写下你的目标、背景，以及你希望 AI 交付什么。"
               />
             </section>
-            <section class="editor result-editor">
+            <section
+              v-if="draft.result.trim() || activeRequest"
+              class="editor result-editor"
+            >
               <header>
-                <h2>优化稿</h2>
+                <h2>当前稿</h2>
+                <n-button
+                  size="tiny"
+                  quaternary
+                  :aria-pressed="showOriginal"
+                  @click="showOriginal = !showOriginal"
+                  >{{
+                    showOriginal ? "收起原始需求" : "查看原始需求"
+                  }}</n-button
+                >
                 <div class="editor-actions">
                   <n-button-group
                     class="result-modes"
@@ -1958,7 +2145,7 @@ onUnmounted(() => {
                   >{{ activeRequest.text }}</pre>
                 <result-comparison
                   v-else-if="resultMode === 'compare' && draft.result"
-                  :source="draft.source"
+                  :source="comparisonSource"
                   :result="draft.result"
                   :changes="changes"
                 />
@@ -1980,108 +2167,153 @@ onUnmounted(() => {
                 <p v-else class="result-empty result-content">
                   优化结果会显示在这里。
                 </p>
-                <form
-                  v-if="draftCategory === 'context'"
-                  class="context-compose"
-                  @submit.prevent="optimize(true)"
-                >
-                  <n-input
-                    v-model:value="followup"
-                    :maxlength="4000"
-                    :input-props="{ 'aria-label': '继续追问' }"
-                    :placeholder="
-                      draft.result.trim()
-                        ? '继续追问，例如：把第二步写具体一点'
-                        : '先生成优化稿，再继续追问'
-                    "
-                    :disabled="!!activeRequest || !draft.result.trim()"
-                  />
-                  <n-select
-                    aria-label="迭代优化模板"
-                    placeholder="暂无迭代模板"
-                    :value="iterationTemplate?.id ?? null"
-                    :options="iterationOptions"
-                    :disabled="!!activeRequest || !iterationOptions.length"
-                    @update:value="(id) => (iterationTemplateId = id)"
-                  />
-                  <n-button
-                    attr-type="submit"
-                    :disabled="
-                      !!activeRequest ||
-                      !selectedTemplate ||
-                      !iterationTemplate ||
-                      !draft.source.trim() ||
-                      !draft.result.trim() ||
-                      !followup.trim()
-                    "
-                  >
-                    <template #icon><Send aria-hidden="true" /></template>追问
-                  </n-button>
-                </form>
               </div>
             </section>
           </div>
           <footer class="workbench-footer">
-            <div class="statusbar">
-              <div class="optimization-controls">
-                <n-select
-                  class="workbench-category"
-                  aria-label="模板分类"
-                  v-model:value="draftCategory"
-                  :options="categoryOptions"
-                  :disabled="!!activeRequest"
-                />
-                <n-select
-                  class="workbench-template"
-                  aria-label="优化模板"
-                  :value="selectedTemplate?.id ?? null"
-                  :options="templateOptions"
-                  placeholder="选择模板"
-                  :disabled="!!activeRequest || !draftTemplates.length"
-                  @update:value="(id) => (templateId = id)"
-                />
-                <n-select
-                  class="workbench-provider"
-                  aria-label="本次优化供应商"
-                  placeholder="选择供应商"
-                  :value="profile?.id ?? null"
-                  :options="
-                    models.map((item) => ({ label: item.name, value: item.id }))
-                  "
-                  :disabled="!!activeRequest || !models.length"
-                  @update:value="(id) => (data.activeProfile = id)"
-                />
-                <n-select
-                  class="workbench-model"
-                  aria-label="本次优化模型"
-                  placeholder="选择模型"
-                  filterable
-                  :value="selectedModel"
-                  :options="modelOptions"
-                  :disabled="!profile || !!activeRequest"
-                  @update:value="(model) => (selectedModel = model)"
-                />
-                <n-button
-                  v-if="!models.length"
-                  quaternary
-                  @click="openUtilities('model')"
-                  >添加供应商</n-button
-                >
-                <n-button v-if="activeRequest" @click="cancel()"
-                  ><template #icon><Square /></template>取消优化</n-button
-                >
-                <n-button
-                  v-else
-                  type="primary"
-                  :disabled="
-                    !selectedTemplate ||
-                    !draft.source.trim() ||
-                    (selectedTemplate?.strategy === 'iterate' &&
-                      !draft.result.trim())
-                  "
-                  @click="optimize()"
-                  ><template #icon><Send /></template>优化提示词</n-button
-                >
+            <div class="composer-card">
+              <n-input
+                v-if="isIterating"
+                v-model:value="followup"
+                type="textarea"
+                :bordered="false"
+                :autosize="{ minRows: 2, maxRows: 6 }"
+                :maxlength="4000"
+                :input-props="{ 'aria-label': '本轮修改要求' }"
+                placeholder="想改哪里？说说你的要求，我们继续打磨。"
+                :disabled="!!activeRequest"
+              />
+              <n-input
+                v-else
+                v-model:value="draft.source"
+                type="textarea"
+                :bordered="false"
+                :autosize="{ minRows: 2, maxRows: 8 }"
+                :maxlength="30000"
+                :input-props="{ 'aria-label': '原始需求' }"
+                placeholder="写下你的想法、使用场景，或粘贴一段需要优化的提示词…"
+                :disabled="!!activeRequest"
+              />
+              <div class="statusbar">
+                <div class="optimization-controls">
+                  <n-select
+                    v-if="isIterating"
+                    class="workbench-template"
+                    aria-label="修改方式"
+                    :value="iterationTemplate?.id ?? null"
+                    :options="iterationOptions"
+                    :disabled="!!activeRequest"
+                    @update:value="(id) => (iterationTemplateId = id)"
+                  />
+                  <n-dropdown
+                    v-if="!isIterating"
+                    trigger="click"
+                    :options="templateOptions"
+                    :disabled="!!activeRequest || !templateOptions.length"
+                    @select="selectOptimizationTemplate"
+                  >
+                    <n-button
+                      quaternary
+                      class="template-menu-trigger"
+                      aria-label="优化模板"
+                      aria-haspopup="menu"
+                      :disabled="!!activeRequest || !templateOptions.length"
+                    >
+                      <span>{{
+                        selectedTemplate?.name ?? "选择模板"
+                      }}</span><ChevronDown :size="14" aria-hidden="true" />
+                    </n-button>
+                  </n-dropdown>
+                  <n-select
+                    class="workbench-provider"
+                    :consistent-menu-width="false"
+                    :menu-props="{
+                      style: {
+                        width: '160px',
+                        maxWidth: 'calc(100vw - 32px)',
+                      },
+                    }"
+                    :style="{
+                      width: `${Math.min(220, (profile?.name.length ?? 5) * 14 + 48)}px`,
+                    }"
+                    aria-label="本次优化供应商"
+                    placeholder="选择供应商"
+                    :value="profile?.id ?? null"
+                    :options="
+                      models.map((item) => ({
+                        label: item.name,
+                        value: item.id,
+                      }))
+                    "
+                    :disabled="!!activeRequest || !models.length"
+                    @update:value="(id) => (data.activeProfile = id)"
+                  />
+                  <n-select
+                    class="workbench-model"
+                    :consistent-menu-width="false"
+                    :menu-props="{
+                      style: {
+                        width: '160px',
+                        maxWidth: 'calc(100vw - 32px)',
+                      },
+                    }"
+                    :style="{
+                      width: `${Math.min(240, Math.max(110, (selectedModel?.length ?? 8) * 7.5 + 32))}px`,
+                    }"
+                    aria-label="本次优化模型"
+                    placeholder="选择模型"
+                    filterable
+                    :value="selectedModel"
+                    :options="modelOptions"
+                    :disabled="!profile || !!activeRequest"
+                    @update:value="(model) => (selectedModel = model)"
+                  />
+                  <n-button
+                    v-if="!models.length"
+                    quaternary
+                    @click="openUtilities('model')"
+                    >添加供应商</n-button
+                  >
+                  <n-button
+                    v-if="activeRequest"
+                    circle
+                    class="composer-send"
+                    aria-label="停止生成"
+                    title="停止生成"
+                    @click="cancel()"
+                    ><template #icon><Square aria-hidden="true" /></template
+                  ></n-button>
+                  <n-button
+                    v-else
+                    type="primary"
+                    circle
+                    class="composer-send"
+                    :aria-label="
+                      isIterating
+                        ? '继续修改'
+                        : draft.result.trim()
+                          ? '再生成一版'
+                          : '生成初稿'
+                    "
+                    :title="
+                      isIterating
+                        ? '继续修改（Ctrl+Enter）'
+                        : draft.result.trim()
+                          ? '再生成一版（Ctrl+Enter）'
+                          : '生成初稿（Ctrl+Enter）'
+                    "
+                    :disabled="
+                      !selectedTemplate ||
+                      (isIterating &&
+                        (!iterationTemplate || !followup.trim())) ||
+                      !draft.source.trim() ||
+                      (selectedTemplate?.strategy === 'iterate' &&
+                        !draft.result.trim())
+                    "
+                    @click="optimize()"
+                    ><template #icon><ArrowUp aria-hidden="true" /></template
+                  ></n-button>
+                </div>
               </div>
             </div>
           </footer>
@@ -2196,7 +2428,7 @@ onUnmounted(() => {
       <template v-if="draft">
         <result-comparison
           v-if="resultMode === 'compare'"
-          :source="draft.source"
+          :source="comparisonSource"
           :result="draft.result"
           :changes="changes"
         />
@@ -2265,7 +2497,9 @@ onUnmounted(() => {
               :class="{ selected: selectedVersion?.id === version.id }"
               @click="selectedVersion = version"
             >
-              <strong>{{ version.model }}</strong><span>{{
+              <strong>{{
+                version.instruction || version.model
+              }}</strong><span>{{
                 new Date(version.created).toLocaleString("zh-CN")
               }}</span>
             </button>

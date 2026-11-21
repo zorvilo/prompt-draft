@@ -11,7 +11,7 @@ defineProps<{ source: string; result: string; changes?: Change[] }>();
     aria-label="优化稿对比"
   >
     <header class="comparison-heading">
-      <div><strong>修订对照</strong><span>原稿与优化稿的文字变化</span></div>
+      <div><strong>修订对照</strong><span>修改前后的文字变化</span></div>
       <div class="comparison-legend" aria-label="修订标记说明">
         <span class="comparison-removed">删除</span>
         <span class="comparison-added">新增</span>

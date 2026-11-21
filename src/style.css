@@ -1646,12 +1646,13 @@ input:focus-visible {
 .draft-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
+  gap: 6px;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .draft-heading .draft-title {
-  flex: 1;
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
 }
 .draft-project-icon {
@@ -1661,7 +1662,7 @@ input:focus-visible {
 }
 @media (max-width: 760px) {
   .draft-heading {
-    flex-basis: 100%;
+    flex-basis: auto;
   }
 }
 
@@ -1718,4 +1719,326 @@ input:focus-visible {
 .draft-menu-shortcut {
   margin-left: auto;
   flex-shrink: 0;
+}
+
+/* 当前稿与连续修改共用一个阅读工作区。 */
+.editor-spread {
+  grid-template-columns: minmax(0, 1fr);
+}
+.editor-spread.has-result .original-editor {
+  block-size: 240px;
+  border-bottom: 1px solid var(--line);
+}
+.editor-spread .editor + .editor {
+  border-left: 0;
+}
+
+.result-preview {
+  padding-inline: max(24px, calc((100% - 860px) / 2));
+}
+.draft-surface {
+  padding-bottom: 0;
+  overflow: auto;
+}
+.draft-surface > .editor-spread {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 230px;
+  min-height: 230px;
+}
+.draft-surface .result-editor {
+  block-size: auto;
+  min-height: 180px;
+  flex: 1;
+}
+.draft-surface .result-editor > header {
+  flex: 0 0 auto;
+  min-height: 46px;
+  flex-wrap: wrap;
+  padding-block: 8px;
+  justify-content: flex-start;
+}
+.result-editor > header .editor-actions {
+  margin-left: auto;
+}
+.draft-surface .original-editor {
+  flex: 0 0 200px;
+}
+.draft-surface .candidate-toolbar {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+.draft-welcome {
+  flex: 1;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px 80px;
+  text-align: center;
+}
+.draft-welcome-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  margin-bottom: 24px;
+}
+.draft-welcome h1 {
+  margin: 0;
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.draft-welcome p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.draft-surface .workbench-footer {
+  position: static;
+  width: 100%;
+  margin: 0;
+  padding: 14px 0 12px;
+  flex-shrink: 0;
+  background: transparent;
+}
+.composer-card {
+  position: relative;
+  margin-top: 0;
+  padding: 12px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 4%);
+}
+.composer-card:focus-within {
+  border-color: var(--accent);
+}
+.composer-card > .n-input {
+  --n-color: transparent !important;
+  --n-color-focus: transparent !important;
+  --n-box-shadow-focus: none !important;
+  font-size: 15px;
+}
+.composer-card .statusbar {
+  position: static;
+  padding: 8px 0 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+.composer-card .optimization-controls {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 5px;
+}
+.composer-card .n-select {
+  width: 130px;
+  min-width: 0;
+}
+.composer-card .workbench-category {
+  width: 88px;
+}
+.composer-card .workbench-model {
+  flex: 0 1 auto;
+  max-width: 200px;
+}
+.composer-card .n-base-selection {
+  --n-border: none !important;
+  --n-border-hover: none !important;
+  --n-color: transparent !important;
+  --n-color-active: var(--rail) !important;
+  --n-font-size: 12px !important;
+}
+.composer-card .composer-send {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+}
+@media (max-width: 660px) {
+  .draft-welcome {
+    padding-bottom: 36px;
+    min-height: 210px;
+  }
+  .draft-welcome-logo {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 18px;
+  }
+  .draft-surface .workbench-footer {
+    padding-inline: 0;
+  }
+  .composer-card {
+    padding: 10px 8px;
+    border-radius: 18px;
+  }
+  .composer-card .n-select {
+    width: 110px;
+  }
+  .composer-card .workbench-model {
+    flex: initial;
+  }
+  .result-editor header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 50px;
+    padding-block: 8px;
+  }
+}
+
+.candidate-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0 12px;
+}
+.candidate-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.candidate-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.regenerate-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.regenerate-controls .workbench-category {
+  width: 90px;
+}
+.regenerate-controls .workbench-template {
+  width: 150px;
+}
+
+/* 引导在标题栏和输入框之间的剩余区域居中。 */
+.draft-empty .draft-welcome {
+  flex: 1 0 200px;
+  min-height: 200px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 0 16px;
+}
+.draft-empty .draft-welcome-logo {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 18px;
+}
+.draft-empty .draft-welcome h1 {
+  font-size: clamp(22px, 2vw, 27px);
+  letter-spacing: 0;
+}
+.draft-empty .draft-welcome p {
+  margin-top: 10px;
+}
+.draft-empty .workbench-footer {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding-top: 0;
+  padding-bottom: 28px;
+}
+@media (max-width: 660px) {
+  .draft-empty .draft-welcome {
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+  .draft-empty .workbench-footer {
+    padding-bottom: 24px;
+  }
+}
+
+.composer-card .n-input .n-input__placeholder {
+  color: var(--muted);
+}
+
+.template-menu-trigger .n-button__content {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+.template-menu-trigger .n-button__content > span {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-tools {
+  margin-left: auto;
+}
+
+.privacy-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.settings .privacy-section {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+.privacy-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+}
+.privacy-title h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings .privacy-section p {
+  font-size: 13px;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+.settings .privacy-summary {
+  margin: 16px 0 10px;
+  color: var(--ink);
+}
+.settings .privacy-detail {
+  margin: 0;
+  color: var(--muted);
+}
+.settings .privacy-note {
+  margin: 20px 0 0;
+  padding-top: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 900px) {
+  .privacy-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings .privacy-section {
+    padding: 20px;
+  }
+}
+
+.shortcut-recorder.n-button {
+  min-width: 164px;
+  border-radius: 7px;
+}
+.shortcut-recorder.has-error {
+  box-shadow: 0 0 0 2px var(--removed-ink);
+}
+.shortcut-feedback {
+  padding-top: 0;
+  gap: 0;
 }

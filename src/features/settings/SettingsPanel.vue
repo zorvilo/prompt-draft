@@ -609,7 +609,6 @@ async function run(action: "test" | "save" | "clear") {
                   </n-radio-group>
                 </div>
               </div>
-              <p class="preference-caption">外观更改即时生效，并自动保存。</p>
             </section>
             <section class="preference-group" aria-labelledby="window-heading">
               <h2 id="window-heading">窗口行为</h2>
@@ -693,7 +692,7 @@ async function run(action: "test" | "save" | "clear") {
                 </div>
                 <div class="preference-row">
                   <h3>存储方式</h3>
-                  <span class="muted">本机 SQLite 数据库</span>
+                  <span class="muted">本地存储</span>
                 </div>
               </div>
             </section>
@@ -732,24 +731,43 @@ async function run(action: "test" | "save" | "clear") {
             </section>
             <section class="preference-group" aria-labelledby="privacy-heading">
               <h2 id="privacy-heading">数据与隐私</h2>
-              <div class="preference-card">
-                <div class="preference-row">
-                  <div>
-                    <h3>本机保存</h3>
-                    <p>
-                      草稿、历史版本和 API Key
-                      保存在本机，请妥善保管电脑及数据文件。
-                    </p>
+              <div class="privacy-panel">
+                <section
+                  class="privacy-section"
+                  aria-labelledby="local-privacy-heading"
+                >
+                  <div class="privacy-title">
+                    <Monitor :size="20" aria-hidden="true" />
+                    <h3 id="local-privacy-heading">数据留在你的电脑</h3>
                   </div>
-                </div>
-                <div class="preference-row">
-                  <div>
-                    <h3>模型请求</h3>
-                    <p>
-                      优化时，提示词及必要上下文会发送至当前选择的模型供应商。
-                    </p>
+                  <p class="privacy-summary">
+                    全部应用数据本地保存，不上传至词稿服务器。
+                  </p>
+                  <p class="privacy-detail">
+                    草稿、历史版本、项目、模板、设置、用量记录和 API Key
+                    均保存在本机。词稿不提供云端同步。
+                  </p>
+                  <p class="privacy-note">请妥善保管电脑、数据文件及备份。</p>
+                </section>
+                <section
+                  class="privacy-section"
+                  aria-labelledby="request-privacy-heading"
+                >
+                  <div class="privacy-title">
+                    <Plug :size="20" aria-hidden="true" />
+                    <h3 id="request-privacy-heading">模型请求由你选择</h3>
                   </div>
-                </div>
+                  <p class="privacy-summary">
+                    优化与迭代时，相关内容直接发往所选供应商。
+                  </p>
+                  <p class="privacy-detail">
+                    请求包含提示词和必要上下文，API Key
+                    用于鉴权。供应商可能按其隐私政策和服务条款处理、保留请求数据。
+                  </p>
+                  <p class="privacy-note">
+                    发送前请确认供应商，避免提交敏感信息。
+                  </p>
+                </section>
               </div>
             </section>
           </div>
