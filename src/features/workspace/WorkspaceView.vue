@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   ArrowLeft,
-  ArrowUp,
   ChevronRight,
   ChevronDown,
   Copy,
@@ -10,14 +9,12 @@ import {
   FileText,
   Folder,
   FolderMinus,
-  History,
   Maximize2,
   Menu,
   Pencil,
   Pin,
   PinOff,
   Plus,
-  Square,
   Star,
   Trash2,
 } from "lucide-vue-next";
@@ -25,7 +22,6 @@ import {
   NText,
   NTooltip,
   NButton,
-  NButtonGroup,
   NCheckbox,
   NDrawer,
   NDrawerContent,
@@ -35,7 +31,6 @@ import {
   NInput,
   NModal,
   NSelect,
-  NSpin,
   useDialog,
   useMessage,
   type DropdownOption,
@@ -46,11 +41,9 @@ import {
   shortcutFromEvent,
   shortcutLabels,
 } from "../settings/shortcuts";
-import { diffChars } from "diff";
 import MarkdownIt from "markdown-it";
 import { open, save as pickSave } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import appIcon from "../../../src-tauri/icons/icon.png";
 import WindowTitlebar from "../../components/WindowTitlebar.vue";
 import LibraryPanel from "../library/LibraryPanel.vue";
 import ProjectsPanel from "../library/ProjectsPanel.vue";
@@ -70,13 +63,17 @@ import {
   type PromptTemplate,
   type TemplateCategory,
   type Profile,
-  type Version,
   type Workspace,
 } from "../../lib/tauri";
 import { createDraftRequests } from "./draftRequests";
 import { routeTemplateWheel } from "./templateWheel";
-import { draftCandidates, selectCandidate } from "./draftCandidates";
-import { buildRevisionMessage } from "./revisionMessage";
+import {
+  latestContext,
+  prepareConversation,
+  conversationUsage,
+  recordReply,
+} from "./conversation";
+import PromptWorkspace from "./PromptWorkspace.vue";
 import { duplicateDraft } from "./duplicateDraft";
 import ResultComparison from "./ResultComparison.vue";
 import type { useWorkspace } from "./workspace";
@@ -108,19 +105,30 @@ watch(utilities, () => {
   usageCatalog.value = false;
 });
 const libraryCategory = ref<TemplateCategory>();
-const libraryCategories = computed(() => [
-  ...builtinCategories,
-  ...(data.value.templateCategories ?? [])
-    .filter((item) => !isBuiltinCategory(item.id))
-    .map((item) => ({
-      label: item.name,
-      value: item.id,
-      description: "自定义提示词模板。",
-    })),
-]);
-const categoryOptions = computed(() =>
-  libraryCategories.value.filter((item) => item.value !== "iteration"),
-);
+const libraryCategories = computed(() => {
+  const categories = [
+    ...builtinCategories,
+    ...(data.value.templateCategories ?? [])
+      .filter((item) => !isBuiltinCategory(item.id))
+      .map((item) => ({
+        label: item.name,
+        value: item.id,
+        description: "自定义提示词模板。",
+      })),
+  ];
+  for (const template of data.value.templates ?? []) {
+    const id = template.category ?? "basic";
+    if (!categories.some((category) => category.value === id)) {
+      categories.push({
+        label: id,
+        value: id,
+        description: "自定义提示词模板。",
+      });
+    }
+  }
+  return categories;
+});
+const categoryOptions = computed(() => libraryCategories.value);
 const utilityLabels = {
   projects: "项目",
   model: "模型",
@@ -137,7 +145,6 @@ function openUtilities(section: NonNullable<typeof utilities.value>) {
   libraryCategory.value = undefined;
   utilities.value = section;
 }
-const showHistory = ref(false);
 const showLibrary = ref(false);
 const uiDefaults = {
   recentExpanded: true,
@@ -179,29 +186,14 @@ const resultPreview = computed(() =>
     ? markdown.render(draft.value?.result ?? "")
     : "",
 );
-const selectedVersion = ref<Version>();
 const requests = createDraftRequests();
 const sendingDraftIds = computed(() => [...requests.keys()]);
 const hasRequests = computed(() => requests.size > 0);
 const activeRequest = computed(() =>
   draft.value ? requests.get(draft.value.id) : undefined,
 );
-const streamOutput = ref<HTMLPreElement>();
-watch(
-  () => activeRequest.value?.text,
-  async () => {
-    const output = streamOutput.value;
-    const follow =
-      !output ||
-      output.scrollHeight - output.clientHeight - output.scrollTop < 32;
-    if (!follow) return;
-    await nextTick();
-    if (streamOutput.value)
-      streamOutput.value.scrollTop = streamOutput.value.scrollHeight;
-  },
-);
 const templateList = computed(() => availableTemplates(data.value));
-const draftCategory = ref<Exclude<TemplateCategory, "iteration">>("basic");
+const draftCategory = ref<TemplateCategory>("basic");
 watch(
   categoryOptions,
   (items) => {
@@ -211,22 +203,6 @@ watch(
   { immediate: true },
 );
 const templateId = ref<string>();
-const iterationTemplateId = ref<string>();
-const iterationTemplates = computed(() =>
-  templateList.value.filter((item) => item.category === "iteration"),
-);
-const iterationOptions = computed(() =>
-  iterationTemplates.value.map((item) => ({
-    label: item.name,
-    value: item.id,
-  })),
-);
-const iterationTemplate = computed(
-  () =>
-    iterationTemplates.value.find(
-      (item) => item.id === iterationTemplateId.value,
-    ) ?? iterationTemplates.value[0],
-);
 const draftTemplates = computed(() =>
   templateList.value.filter(
     (item) => (item.category ?? "basic") === draftCategory.value,
@@ -255,10 +231,20 @@ const templateOptions = computed(() =>
 );
 function selectOptimizationTemplate(id: string) {
   const template = templateList.value.find((item) => item.id === id);
-  if (!template || template.category === "iteration") return;
+  if (!template) return;
   draftCategory.value = template.category ?? "basic";
   templateId.value = id;
 }
+watch(
+  [() => draft.value?.id, () => draft.value?.dialogue?.mode],
+  () => {
+    const item = draft.value;
+    if (item?.dialogue?.mode !== "chat") return;
+    const templateId = latestContext(item)?.templateId;
+    if (templateId) selectOptimizationTemplate(templateId);
+  },
+  { immediate: true },
+);
 const editingTemplate = ref<PromptTemplate>();
 const viewingBuiltin = computed(
   () => !!editingTemplate.value && isBuiltinTemplate(editingTemplate.value.id),
@@ -363,37 +349,12 @@ watch(
     }
   },
 );
-const followup = ref("");
-const isIterating = computed(() => !!draft.value?.result.trim());
-const candidates = computed(() =>
-  draft.value ? draftCandidates(draft.value) : [],
-);
-const candidateIndex = computed(() =>
-  candidates.value.findIndex(
-    (version) => version.result === draft.value?.result,
-  ),
-);
-async function switchCandidate(index: number) {
-  const item = draft.value;
-  const candidate = candidates.value[index];
-  if (!item || !candidate || requests.has(item.id)) return;
-  selectCandidate(item, candidate);
-  resultMode.value = "preview";
-  await save();
-}
-const showOriginal = ref(false);
-watch(
-  () => draft.value?.id,
-  () => {
-    followup.value = "";
-  },
-);
+
 watch(
   () => draft.value?.id,
   () => {
     resultMode.value = "preview";
     showResult.value = false;
-    showOriginal.value = false;
   },
 );
 const selectedModel = ref<string | null>(null);
@@ -410,23 +371,25 @@ watch(
   },
   { immediate: true },
 );
-const sourceCount = computed(
-  () => Array.from(draft.value?.source ?? "").length,
-);
-const comparisonSource = computed(() => {
+const contextUsage = computed(() => {
   const item = draft.value;
-  if (!item) return "";
-  const latest = item.versions[0];
-  if (latest?.result !== item.result) return latest?.result ?? item.source;
-  return item.versions[1]?.result ?? item.source;
+  const template = selectedTemplate.value;
+  if (!item || !template) return undefined;
+  const starting = !item.result && !item.messages.length;
+  const input = item.dialogue?.chatInput ?? "";
+  const preview =
+    starting && input.trim() ? { ...item, source: input.trim() } : item;
+  return conversationUsage(
+    prepareConversation(
+      preview,
+      template,
+      starting ? undefined : input.trim() || undefined,
+      "chat",
+      false,
+    ),
+  );
 });
-const changes = computed(() => {
-  if (resultMode.value !== "compare" || !draft.value) return [];
-  return diffChars(comparisonSource.value, draft.value.result, {
-    timeout: 150,
-  });
-});
-const drawerWidth = computed(() => "min(100vw, 490px)");
+const comparisonSource = computed(() => draft.value?.source ?? "");
 
 function create(projectId?: string) {
   utilities.value = undefined;
@@ -491,7 +454,7 @@ function deleteTemplateCategory(category: { value: string; label: string }) {
       category.label +
       "」分类及其中的 " +
       count +
-      " 个模板，草稿内容和历史版本不受影响。此操作不可撤销。",
+      " 个模板，草稿内容和聊天记录不受影响。此操作不可撤销。",
     async () => {
       const previous = {
         templates: data.value.templates,
@@ -518,7 +481,7 @@ function deleteTemplateCategory(category: { value: string; label: string }) {
 function newTemplate() {
   editingTemplate.value = {
     id: crypto.randomUUID(),
-    strategy: libraryCategory.value === "iteration" ? "iterate" : "general",
+    strategy: "general",
     category: libraryCategory.value,
     name: "",
     content: "",
@@ -535,10 +498,7 @@ async function saveTemplate() {
     content: editing.content.trim(),
     description: editing.description.trim(),
   };
-  if (item.category === "iteration" && !item.userContent?.trim()) {
-    message.warning("请填写迭代模板的用户提示词内容。");
-    return;
-  }
+
   if (!item.name || !item.content) {
     message.warning("请填写提示词名称和内容。");
     return;
@@ -649,7 +609,11 @@ function deleteProject(id: string) {
   ).length;
   confirm(
     "删除项目",
-    "将永久删除「" + project.name + "」和其中的 " + count + " 份草稿及版本。",
+    "将永久删除「" +
+      project.name +
+      "」和其中的 " +
+      count +
+      " 份草稿及聊天记录。",
     async () => {
       await Promise.all(
         data.value.drafts
@@ -713,12 +677,6 @@ const draftMenuOptions = computed<DropdownOption[]>(() => {
       key: "duplicate",
       icon: () => h(Copy, { size: 14, "aria-hidden": "true" }),
     },
-    {
-      label: "版本历史",
-      key: "history",
-      disabled: item.id !== draft.value?.id,
-      icon: () => h(History, { size: 14, "aria-hidden": "true" }),
-    },
     { type: "divider", key: "delete-divider" },
     {
       label: () => h(NText, { type: "error" }, { default: () => "删除" }),
@@ -780,7 +738,6 @@ const draftMenuOptions = computed<DropdownOption[]>(() => {
           "pin",
           "favorite",
           "result-divider",
-          "history",
           "project-divider",
           "current-project",
           "projects",
@@ -808,7 +765,7 @@ const draftMenuOptions = computed<DropdownOption[]>(() => {
   return menuOptions.map((option) => {
     if (
       option.type ||
-      !["rename", "pin", "favorite", "delete", "duplicate", "history"].includes(
+      !["rename", "pin", "favorite", "delete", "duplicate"].includes(
         String(option.key),
       )
     )
@@ -825,12 +782,7 @@ const draftMenuOptions = computed<DropdownOption[]>(() => {
             shortcutLabels(
               shortcuts[
                 (option.key === "duplicate" ? "copyResult" : option.key) as
-                  | "rename"
-                  | "pin"
-                  | "favorite"
-                  | "delete"
-                  | "copyResult"
-                  | "history"
+                  "rename" | "pin" | "favorite" | "delete" | "copyResult"
               ],
             ).join("+"),
           ),
@@ -936,9 +888,6 @@ function runDraftMenu(key: string | number) {
     case "delete":
       deleteDraft(item.id);
       break;
-    case "history":
-      if (item.id === draft.value?.id) history();
-      break;
     case "unassign":
       item.projectId = null;
       break;
@@ -956,7 +905,7 @@ function deleteDraft(id: string) {
   if (!item) return;
   confirm(
     "删除草稿",
-    "将永久删除「" + (item.title || "未命名草稿") + "」和它的全部版本。",
+    "将永久删除「" + (item.title || "未命名草稿") + "」和它的全部聊天记录。",
     async () => {
       await cancel(item.id);
       if (data.value.activeDraft === item.id) data.value.activeDraft = null;
@@ -992,62 +941,64 @@ function confirm(
   });
 }
 
-async function optimize(isFollowup = isIterating.value) {
+async function optimize() {
   const item = draft.value;
-  if (!item || !item.source.trim() || requests.has(item.id)) return;
-  if (utilities.value) return;
+  if (!item || requests.has(item.id) || utilities.value) return;
   const template = selectedTemplate.value;
   if (!template) {
-    message.info("请先在模板页创建一个优化模板。");
+    message.info("请先选择优化模板。");
     return;
   }
-  if (!isFollowup && (!item.title.trim() || item.title === "未命名草稿")) {
-    item.title = Array.from(item.source.trim().replace(/\s+/g, " "))
-      .slice(0, 100)
-      .join("");
-  }
-  const previousResult = item.result;
-  const instruction = followup.value.trim();
-  if (isFollowup && (!previousResult.trim() || !instruction)) return;
-  const requestTemplate = isFollowup ? iterationTemplate.value : template;
-  if (!requestTemplate) {
-    message.info("请先在模板页创建一个迭代优化模板。");
-    return;
-  }
-  const followupRevision = isFollowup
-    ? { previousResult, instruction }
-    : undefined;
-
-  const revision =
-    !isFollowup && template.strategy === "iterate"
-      ? {
-          previousResult,
-          instruction: iterationInstruction,
-        }
-      : undefined;
-  if (revision && !revision.previousResult.trim()) {
-    message.warning("请先生成或填写一份优化稿，再使用通用迭代。");
-    return;
-  }
+  const mode = item.dialogue?.mode ?? "draft";
+  const startingChat = mode === "chat" && !item.result && !item.messages.length;
+  const input = mode === "chat" ? (item.dialogue?.chatInput ?? "") : "";
+  if (startingChat && input.trim()) item.source = input.trim();
+  if (!item.source.trim()) return;
+  const instruction =
+    mode === "draft" || startingChat ? undefined : input.trim() || undefined;
+  if (mode === "chat" && !startingChat && !instruction) return;
   if (!profile.value) {
     if (!models.value.length) openUtilities("model");
-    else message.info("请先在工作台底部选择供应商。");
+    else message.info("请选择供应商。");
     return;
   }
   if (
-    !modelOptions.value.some(
-      (option) => option.value === selectedModel.value,
-    ) ||
-    !selectedModel.value
+    !selectedModel.value ||
+    !modelOptions.value.some((option) => option.value === selectedModel.value)
   ) {
-    message.info("请先选择本次使用的模型。");
+    message.info("请选择本次使用的模型。");
     return;
   }
+  if (!item.title.trim() || item.title === "未命名草稿")
+    item.title = Array.from(item.source.trim().replace(/\s+/g, " "))
+      .slice(0, 100)
+      .join("");
   const activeProfile = { ...profile.value, model: selectedModel.value };
   const source = item.source;
+  const sentAt = Date.now();
   const id = crypto.randomUUID();
-  requests.set(item.id, { id, text: "" });
+  requests.set(item.id, {
+    id,
+    text: "",
+    mode,
+    model: activeProfile.model,
+    providerName: activeProfile.name,
+    templateId: template.id,
+    templateName: template.name,
+  });
+  let sentMessage: string | undefined;
+  let completed = false;
   try {
+    const conversation = prepareConversation(item, template, instruction, mode);
+    const request = requests.get(item.id);
+    if (mode === "chat") {
+      sentMessage = startingChat ? source : instruction;
+      if (request) request.userMessage = sentMessage;
+      item.dialogue ??= {};
+      item.dialogue.chatInput = "";
+    } else if (request) {
+      request.userMessage = source;
+    }
     const available = await desktop.hasKey(activeProfile);
     if (
       !requests.isCurrent(item.id, id) ||
@@ -1055,96 +1006,59 @@ async function optimize(isFollowup = isIterating.value) {
     )
       return;
     if (!available) {
-      message.warning("请先为所选供应商填写API Key。");
+      message.warning("请先为所选供应商填写 API Key。");
       openUtilities("model");
       return;
     }
-    if (draft.value?.id === item.id) resultMode.value = "preview";
-    const renderRevision = followupRevision ?? revision;
-    let userContent = requestTemplate.userContent?.trim()
-      ? renderTemplate(requestTemplate.userContent, source, renderRevision)
-      : undefined;
-    if (isFollowup) {
-      userContent = buildRevisionMessage(
-        userContent ?? "",
-        source,
-        previousResult,
-        instruction,
-        item.versions.slice(
-          Math.max(
-            0,
-            item.versions.findIndex(
-              (version) =>
-                version.result === previousResult && version.source === source,
-            ),
-          ),
-        ),
-      );
-    }
-    const result = await desktop.optimize(
+    const started = performance.now();
+    const reply = await desktop.optimize(
       activeProfile,
-      source,
       id,
-      requestTemplate.strategy,
-      revision,
-      renderTemplate(requestTemplate.content, source, renderRevision),
-      userContent,
-      followupRevision,
-      (text) => {
-        requests.append(item.id, id, text);
-      },
+      conversation,
+      mode,
+      (text) => requests.append(item.id, id, text),
     );
     if (!requests.isCurrent(item.id, id)) return;
     const current = data.value.drafts.find((entry) => entry.id === item.id);
     if (!current) return;
-    const version: Version = {
-      id,
-      source,
-      result,
-      question: null,
-      model: activeProfile.model,
-      providerName: activeProfile.name,
-      instruction: followupRevision?.instruction,
-      created: Date.now(),
-    };
-    if (
-      previousResult.trim() &&
-      current.versions[0]?.result !== previousResult
-    ) {
-      current.versions.unshift({
-        id: crypto.randomUUID(),
-        source,
-        result: previousResult,
-        question: null,
-        model: "手动编辑",
-        created: Date.now(),
-      });
-    }
-    current.versions.unshift(version);
-    current.updated = version.created;
-    if (current.source === source && current.result === previousResult) {
-      current.result = version.result;
-      current.question = null;
-      if (
-        followupRevision &&
-        draft.value?.id === item.id &&
-        followup.value.trim() === instruction
-      )
-        followup.value = "";
-      if (draft.value?.id === item.id) resultMode.value = "preview";
-    } else {
-      message.info("草稿内容已修改，本次优化结果已保存到版本历史。");
-    }
+    recordReply(
+      current,
+      conversation,
+      reply,
+      mode,
+      activeProfile.model,
+      activeProfile.name,
+      Math.round(performance.now() - started),
+      sentAt,
+    );
+    completed = true;
+    requests.finish(item.id, id);
     await save();
   } catch (error) {
-    if (requests.isCurrent(item.id, id)) {
+    if (completed || requests.isCurrent(item.id, id))
       message.error((item.title || "未命名草稿") + "：" + errorMessage(error), {
         duration: 9000,
         closable: true,
       });
-    }
   } finally {
+    if (
+      !completed &&
+      sentMessage &&
+      (!requests.has(item.id) || requests.isCurrent(item.id, id)) &&
+      item.dialogue?.chatInput === "" &&
+      data.value.drafts.some((entry) => entry.id === item.id)
+    )
+      item.dialogue.chatInput = sentMessage;
     requests.finish(item.id, id);
+  }
+}
+
+async function copyText(content: string) {
+  try {
+    await writeText(content);
+    message.success("已复制");
+  } catch (error) {
+    message.error(errorMessage(error));
   }
 }
 
@@ -1170,9 +1084,9 @@ async function copy() {
   }
 }
 
-async function exportFile(format: string) {
+async function exportFile(format: string, content = draft.value?.result) {
   const item = draft.value;
-  if (!item?.result) return;
+  if (!item || !content) return;
   const filename = item.title.replace(/[<>:"/\\|?*]/g, "_") || "词稿";
   const path = await pickSave({
     defaultPath: filename + "." + format,
@@ -1181,8 +1095,8 @@ async function exportFile(format: string) {
     ],
   });
   if (!path) return;
-  await desktop.exportFile(path, item.result);
-  message.success("已导出优化稿");
+  await desktop.exportFile(path, content);
+  message.success("已导出");
 }
 
 function backup() {
@@ -1216,7 +1130,7 @@ function backup() {
               },
             },
             [
-              h("li", "项目、草稿、历史版本及用户模板"),
+              h("li", "项目、草稿、聊天记录及用户模板"),
               h("li", "供应商配置、API Key 及应用设置"),
               h("li", "用量记录、价格目录及目录缓存"),
             ],
@@ -1296,7 +1210,7 @@ async function restore() {
               [
                 h(
                   "li",
-                  `${incoming.projects} 个项目、${incoming.drafts} 份草稿、${incoming.versions} 个历史版本`,
+                  `${incoming.projects} 个项目、${incoming.drafts} 份草稿、${incoming.messages} 条聊天消息`,
                 ),
                 h(
                   "li",
@@ -1356,48 +1270,6 @@ async function restore() {
   }
 }
 
-function history() {
-  selectedVersion.value = draft.value?.versions[0];
-  showHistory.value = true;
-}
-
-function restoreVersion() {
-  const item = draft.value;
-  const previous = selectedVersion.value;
-  if (!item || !previous) return;
-  confirm(
-    "恢复版本",
-    "当前编辑内容也会保存为一个版本。",
-    async () => {
-      const snapshot: Version = {
-        id: crypto.randomUUID(),
-        source: item.source,
-        result: item.result,
-        question: item.question,
-        model: "恢复前的草稿",
-        created: Date.now(),
-      };
-      item.versions.unshift(
-        {
-          ...previous,
-          instruction: undefined,
-          id: crypto.randomUUID(),
-          created: Date.now(),
-        },
-        snapshot,
-      );
-      item.source = previous.source;
-      item.result = previous.result;
-      item.updated = Date.now();
-      item.question = previous.question;
-      showHistory.value = false;
-      await save();
-      if (!saveError.value) message.success("已恢复为新版本");
-    },
-    "恢复版本",
-  );
-}
-
 async function updateShortcuts(value: NonNullable<Workspace["shortcuts"]>) {
   const previous = data.value.shortcuts;
   data.value.shortcuts = value;
@@ -1446,7 +1318,6 @@ function shortcut(event: KeyboardEvent) {
     event.defaultPrevented ||
     event.isComposing ||
     event.keyCode === 229 ||
-    showHistory.value ||
     showClose.value ||
     event.repeat ||
     document.querySelector(".n-modal, .n-dialog")
@@ -1454,11 +1325,27 @@ function shortcut(event: KeyboardEvent) {
     return;
   const binding = shortcutFromEvent(event);
   const shortcuts = { ...defaultShortcuts, ...data.value.shortcuts };
+  if (binding === shortcuts.newline || binding === shortcuts.newlineAlternate)
+    return;
+  const target = event.target as HTMLElement | null;
+  if (
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    target?.closest(
+      'input, textarea, [contenteditable="true"], [role="textbox"]',
+    )
+  )
+    return;
   if (binding === shortcuts.newDraft) {
     event.preventDefault();
     create();
   }
-  if (binding === shortcuts.optimize) {
+  if (
+    binding === shortcuts.optimize &&
+    binding !== "Enter" &&
+    draft.value?.dialogue?.mode !== "chat"
+  ) {
     event.preventDefault();
     void optimize();
   }
@@ -1485,9 +1372,6 @@ function shortcut(event: KeyboardEvent) {
       break;
     case "copyResult":
       copyDraft(item);
-      break;
-    case "history":
-      history();
       break;
   }
 }
@@ -1578,12 +1462,6 @@ onUnmounted(() => {
         class="main-surface"
         :class="{
           'draft-surface': draft && !utilities && !showLibrary,
-          'draft-empty':
-            draft &&
-            !draft.result.trim() &&
-            !activeRequest &&
-            !utilities &&
-            !showLibrary,
         }"
       >
         <n-alert
@@ -1895,428 +1773,159 @@ onUnmounted(() => {
           </div>
         </div>
         <template v-else>
-          <div class="draft-toolbar">
-            <button
-              type="button"
-              class="draft-heading"
-              aria-haspopup="menu"
-              :aria-expanded="
-                draftMenuOpen &&
-                draftMenu?.kind === 'title' &&
-                draftMenu.id === draft.id
-              "
-              @click.stop="openTitleMenu"
-            >
-              <n-tooltip
-                v-if="draftProject"
-                trigger="hover"
-                :style="{ maxWidth: '300px' }"
-              >
-                <template #trigger>
-                  <span
-                    class="draft-project-icon"
-                    :aria-label="'所属项目：' + draftProject.name"
-                  >
-                    <Folder :size="18" aria-hidden="true" />
-                  </span>
-                </template>
-                所属项目：{{ draftProject.name }}
-              </n-tooltip>
-              <span class="draft-title">{{ draft.title || "未命名草稿" }}</span>
-              <ChevronDown
-                :size="16"
-                class="draft-title-chevron"
-                aria-hidden="true"
-              />
-            </button>
-            <div
-              v-if="
-                draft.source.trim() ||
-                draft.result.trim() ||
-                draft.versions.length
-              "
-              class="draft-tools"
-            >
-              <n-button
-                quaternary
-                size="small"
-                :aria-pressed="draft.favorite"
-                :aria-label="draft.favorite ? '取消收藏' : '收藏草稿'"
-                @click="draft.favorite = !draft.favorite"
-                ><template #icon
-                  ><Star
-                    :fill="
-                      draft.favorite ? 'currentColor' : 'none'
-                    " /></template
-              ></n-button>
-              <n-button
-                v-if="draft.versions.length"
-                quaternary
-                size="small"
-                @click="history"
-                ><template #icon><History /></template>历史</n-button
-              >
-            </div>
-          </div>
-          <section
-            v-if="!draft.result.trim() && !activeRequest"
-            class="draft-welcome"
+          <prompt-workspace
+            :draft="draft"
+            :request="activeRequest"
+            :context-usage="contextUsage"
+            :send-shortcut="
+              data.shortcuts?.optimize ?? defaultShortcuts.optimize
+            "
+            :template-name="selectedTemplate?.name"
+            @generate="optimize"
+            @copy="copyText"
+            @download="
+              (content) =>
+                exportFile('md', content).catch((error) =>
+                  message.error(errorMessage(error)),
+                )
+            "
+            @expand="showResult = true"
+            @cancel="cancel()"
           >
-            <img :src="appIcon" alt="词稿" class="draft-welcome-logo" />
-            <h1>你想写一份什么提示词？</h1>
-            <p>写下需求，生成初稿，再慢慢打磨。</p>
-          </section>
-          <div
-            v-if="draft.result.trim() || activeRequest"
-            class="editor-spread"
-            :class="{ 'has-result': draft.result.trim() }"
-          >
-            <div v-if="draft.result.trim()" class="candidate-toolbar">
-              <div class="candidate-navigation">
-                <n-button
-                  size="small"
-                  quaternary
-                  :disabled="
-                    !!activeRequest ||
-                    candidateIndex < 0 ||
-                    candidateIndex >= candidates.length - 1
-                  "
-                  @click="switchCandidate(candidateIndex + 1)"
-                  >上一版</n-button
+            <template #heading>
+              <button
+                type="button"
+                class="draft-heading"
+                aria-haspopup="menu"
+                :aria-expanded="
+                  draftMenuOpen &&
+                  draftMenu?.kind === 'title' &&
+                  draftMenu.id === draft.id
+                "
+                @click.stop="openTitleMenu"
+              >
+                <n-tooltip
+                  v-if="draftProject"
+                  trigger="hover"
+                  :style="{ maxWidth: '300px' }"
                 >
-                <span class="candidate-count">{{
-                  candidateIndex >= 0
-                    ? `候选 ${candidates.length - candidateIndex} / ${candidates.length}`
-                    : "当前编辑稿"
+                  <template #trigger>
+                    <span
+                      class="draft-project-icon"
+                      :aria-label="'所属项目：' + draftProject.name"
+                    >
+                      <Folder :size="18" aria-hidden="true" />
+                    </span>
+                  </template>
+                  所属项目：{{ draftProject.name }}
+                </n-tooltip>
+                <span class="draft-title">{{
+                  draft.title || "未命名草稿"
                 }}</span>
-                <n-button
-                  size="small"
-                  quaternary
-                  :disabled="
-                    !!activeRequest ||
-                    !candidates.length ||
-                    candidateIndex === 0
-                  "
-                  @click="switchCandidate(Math.max(0, candidateIndex - 1))"
-                  >下一版</n-button
-                >
-              </div>
-              <div class="regenerate-controls">
-                <n-dropdown
-                  trigger="click"
-                  :options="templateOptions"
-                  :disabled="!!activeRequest || !templateOptions.length"
-                  @select="selectOptimizationTemplate"
-                >
-                  <n-button
-                    quaternary
-                    class="template-menu-trigger"
-                    aria-label="重新优化模板"
-                    aria-haspopup="menu"
-                    :disabled="!!activeRequest || !templateOptions.length"
-                  >
-                    <span>{{
-                      selectedTemplate?.name ?? "选择模板"
-                    }}</span><ChevronDown :size="14" aria-hidden="true" />
-                  </n-button>
-                </n-dropdown>
-                <n-button
-                  size="small"
-                  secondary
-                  :disabled="
-                    !!activeRequest || !selectedTemplate || !draft.source.trim()
-                  "
-                  @click="optimize(false)"
-                  >重新优化</n-button
-                >
-              </div>
-            </div>
-
-            <section
-              v-if="showOriginal && draft.result.trim()"
-              class="editor original-editor"
-            >
-              <header>
-                <h2>
-                  {{
-                    draft.result.trim() ? "原始需求" : "你想写一份什么提示词？"
-                  }}
-                </h2>
-                <span>{{ sourceCount.toLocaleString("zh-CN") }} 字</span>
-              </header>
-              <textarea
-                v-model="draft.source"
-                aria-label="原稿"
-                spellcheck="false"
-                maxlength="30000"
-                placeholder="写下你的目标、背景，以及你希望 AI 交付什么。"
-              />
-            </section>
-            <section
-              v-if="draft.result.trim() || activeRequest"
-              class="editor result-editor"
-            >
-              <header>
-                <h2>当前稿</h2>
-                <n-button
-                  size="tiny"
-                  quaternary
-                  :aria-pressed="showOriginal"
-                  @click="showOriginal = !showOriginal"
-                  >{{
-                    showOriginal ? "收起原始需求" : "查看原始需求"
-                  }}</n-button
-                >
-                <div class="editor-actions">
-                  <n-button-group
-                    class="result-modes"
-                    role="group"
-                    aria-label="优化稿显示方式"
-                  >
-                    <n-button
-                      v-for="mode in resultModes"
-                      :key="mode.value"
-                      size="tiny"
-                      quaternary
-                      :disabled="!!activeRequest"
-                      :aria-pressed="resultMode === mode.value"
-                      @click="resultMode = mode.value"
-                      >{{ mode.label }}</n-button
-                    >
-                  </n-button-group>
-                  <span
-                    class="result-actions-divider"
-                    aria-hidden="true"
-                  ></span>
-                  <n-button
-                    quaternary
-                    size="small"
-                    :disabled="!draft.result || !!activeRequest"
-                    aria-label="复制优化稿"
-                    title="复制优化稿"
-                    @click="copy"
-                    ><template #icon><Copy /></template
-                  ></n-button>
-                  <n-dropdown
-                    trigger="click"
-                    :options="[
-                      { label: '导出 Markdown', key: 'md' },
-                      { label: '导出纯文本', key: 'txt' },
-                    ]"
-                    @select="
-                      (key) =>
-                        exportFile(String(key)).catch((error) =>
-                          message.error(errorMessage(error)),
-                        )
-                    "
-                    ><n-button
-                      quaternary
-                      size="small"
-                      :disabled="!draft.result || !!activeRequest"
-                      aria-label="导出优化稿"
-                      ><template #icon><Download /></template></n-button
-                  ></n-dropdown>
-                  <n-button
-                    quaternary
-                    size="small"
-                    :disabled="!draft.result || !!activeRequest"
-                    aria-label="放大查看优化稿"
-                    title="放大查看优化稿"
-                    @click="showResult = true"
-                    ><template #icon><Maximize2 aria-hidden="true" /></template
-                  ></n-button>
-                </div>
-              </header>
-              <div class="result-output">
-                <div
-                  v-if="activeRequest && !activeRequest.text"
-                  class="result-content result-progress"
-                  role="status"
-                >
-                  <n-spin :size="16" />
-                  <span>正在优化提示词…</span>
-                </div>
-                <pre
-                  v-else-if="activeRequest"
-                  ref="streamOutput"
-                  class="result-content result-stream"
-                  tabindex="0"
-                  aria-label="正在生成的优化稿"
-                  >{{ activeRequest.text }}</pre>
-                <result-comparison
-                  v-else-if="resultMode === 'compare' && draft.result"
-                  :source="comparisonSource"
-                  :result="draft.result"
-                  :changes="changes"
+                <ChevronDown
+                  :size="16"
+                  class="draft-title-chevron"
+                  aria-hidden="true"
                 />
-                <div
-                  v-else-if="resultMode === 'preview' && draft.result"
-                  class="result-preview result-content"
-                  tabindex="0"
-                  aria-label="优化稿预览"
-                  v-html="resultPreview"
-                ></div>
-                <textarea
-                  v-else-if="resultMode === 'source'"
-                  class="result-content"
-                  v-model="draft.result"
-                  aria-label="优化稿"
-                  spellcheck="false"
-                  placeholder="改写结果会显示在这里，也可以直接编辑。"
-                />
-                <p v-else class="result-empty result-content">
-                  优化结果会显示在这里。
-                </p>
-              </div>
-            </section>
-          </div>
-          <footer class="workbench-footer">
-            <div class="composer-card">
-              <n-input
-                v-if="isIterating"
-                v-model:value="followup"
-                type="textarea"
-                :bordered="false"
-                :autosize="{ minRows: 2, maxRows: 6 }"
-                :maxlength="4000"
-                :input-props="{ 'aria-label': '本轮修改要求' }"
-                placeholder="想改哪里？说说你的要求，我们继续打磨。"
-                :disabled="!!activeRequest"
+              </button>
+            </template>
+            <template #template
+              ><n-dropdown
+                trigger="click"
+                :options="templateOptions"
+                :value="selectedTemplate?.id ?? null"
+                :menu-props="() => ({ class: 'optimization-template-menu' })"
+                :disabled="!templateOptions.length"
+                @select="selectOptimizationTemplate"
+              >
+                <n-button
+                  class="template-menu-trigger"
+                  aria-label="优化模板"
+                  aria-haspopup="menu"
+                  :disabled="!templateOptions.length"
+                >
+                  <span>{{
+                    selectedTemplate?.name ?? "选择模板"
+                  }}</span><ChevronDown :size="14" aria-hidden="true" />
+                </n-button>
+              </n-dropdown>
+            </template>
+            <template #actions
+              ><n-dropdown
+                trigger="click"
+                :options="[
+                  { label: '导出 Markdown', key: 'md' },
+                  { label: '导出纯文本', key: 'txt' },
+                ]"
+                @select="
+                  (key) =>
+                    exportFile(String(key)).catch((error) =>
+                      message.error(errorMessage(error)),
+                    )
+                "
+              >
+                <n-button
+                  quaternary
+                  :disabled="!draft.result.trim()"
+                  size="small"
+                  title="导出优化稿"
+                  aria-label="导出当前稿"
+                  ><template #icon><Download aria-hidden="true" /></template
+                ></n-button> </n-dropdown
+            ></template>
+            <template #models
+              ><n-select
+                class="workbench-provider"
+                :consistent-menu-width="false"
+                :menu-props="{
+                  style: {
+                    width: '160px',
+                    maxWidth: 'calc(100vw - 32px)',
+                  },
+                }"
+                :style="{
+                  width: `${Math.min(220, (profile?.name.length ?? 5) * 14 + 48)}px`,
+                }"
+                aria-label="本次优化供应商"
+                placeholder="选择供应商"
+                :value="profile?.id ?? null"
+                :options="
+                  models.map((item) => ({
+                    label: item.name,
+                    value: item.id,
+                  }))
+                "
+                :disabled="!models.length"
+                @update:value="(id) => (data.activeProfile = id)"
               />
-              <n-input
-                v-else
-                v-model:value="draft.source"
-                type="textarea"
-                :bordered="false"
-                :autosize="{ minRows: 2, maxRows: 8 }"
-                :maxlength="30000"
-                :input-props="{ 'aria-label': '原始需求' }"
-                placeholder="写下你的想法、使用场景，或粘贴一段需要优化的提示词…"
-                :disabled="!!activeRequest"
+              <n-select
+                class="workbench-model"
+                :consistent-menu-width="false"
+                :menu-props="{
+                  style: {
+                    width: '160px',
+                    maxWidth: 'calc(100vw - 32px)',
+                  },
+                }"
+                :style="{
+                  width: `${Math.min(240, Math.max(110, (selectedModel?.length ?? 8) * 7.5 + 32))}px`,
+                }"
+                aria-label="本次优化模型"
+                placeholder="选择模型"
+                filterable
+                :value="selectedModel"
+                :options="modelOptions"
+                :disabled="!profile"
+                @update:value="(model) => (selectedModel = model)"
               />
-              <div class="statusbar">
-                <div class="optimization-controls">
-                  <n-select
-                    v-if="isIterating"
-                    class="workbench-template"
-                    aria-label="修改方式"
-                    :value="iterationTemplate?.id ?? null"
-                    :options="iterationOptions"
-                    :disabled="!!activeRequest"
-                    @update:value="(id) => (iterationTemplateId = id)"
-                  />
-                  <n-dropdown
-                    v-if="!isIterating"
-                    trigger="click"
-                    :options="templateOptions"
-                    :disabled="!!activeRequest || !templateOptions.length"
-                    @select="selectOptimizationTemplate"
-                  >
-                    <n-button
-                      quaternary
-                      class="template-menu-trigger"
-                      aria-label="优化模板"
-                      aria-haspopup="menu"
-                      :disabled="!!activeRequest || !templateOptions.length"
-                    >
-                      <span>{{
-                        selectedTemplate?.name ?? "选择模板"
-                      }}</span><ChevronDown :size="14" aria-hidden="true" />
-                    </n-button>
-                  </n-dropdown>
-                  <n-select
-                    class="workbench-provider"
-                    :consistent-menu-width="false"
-                    :menu-props="{
-                      style: {
-                        width: '160px',
-                        maxWidth: 'calc(100vw - 32px)',
-                      },
-                    }"
-                    :style="{
-                      width: `${Math.min(220, (profile?.name.length ?? 5) * 14 + 48)}px`,
-                    }"
-                    aria-label="本次优化供应商"
-                    placeholder="选择供应商"
-                    :value="profile?.id ?? null"
-                    :options="
-                      models.map((item) => ({
-                        label: item.name,
-                        value: item.id,
-                      }))
-                    "
-                    :disabled="!!activeRequest || !models.length"
-                    @update:value="(id) => (data.activeProfile = id)"
-                  />
-                  <n-select
-                    class="workbench-model"
-                    :consistent-menu-width="false"
-                    :menu-props="{
-                      style: {
-                        width: '160px',
-                        maxWidth: 'calc(100vw - 32px)',
-                      },
-                    }"
-                    :style="{
-                      width: `${Math.min(240, Math.max(110, (selectedModel?.length ?? 8) * 7.5 + 32))}px`,
-                    }"
-                    aria-label="本次优化模型"
-                    placeholder="选择模型"
-                    filterable
-                    :value="selectedModel"
-                    :options="modelOptions"
-                    :disabled="!profile || !!activeRequest"
-                    @update:value="(model) => (selectedModel = model)"
-                  />
-                  <n-button
-                    v-if="!models.length"
-                    quaternary
-                    @click="openUtilities('model')"
-                    >添加供应商</n-button
-                  >
-                  <n-button
-                    v-if="activeRequest"
-                    circle
-                    class="composer-send"
-                    aria-label="停止生成"
-                    title="停止生成"
-                    @click="cancel()"
-                    ><template #icon><Square aria-hidden="true" /></template
-                  ></n-button>
-                  <n-button
-                    v-else
-                    type="primary"
-                    circle
-                    class="composer-send"
-                    :aria-label="
-                      isIterating
-                        ? '继续修改'
-                        : draft.result.trim()
-                          ? '再生成一版'
-                          : '生成初稿'
-                    "
-                    :title="
-                      isIterating
-                        ? '继续修改（Ctrl+Enter）'
-                        : draft.result.trim()
-                          ? '再生成一版（Ctrl+Enter）'
-                          : '生成初稿（Ctrl+Enter）'
-                    "
-                    :disabled="
-                      !selectedTemplate ||
-                      (isIterating &&
-                        (!iterationTemplate || !followup.trim())) ||
-                      !draft.source.trim() ||
-                      (selectedTemplate?.strategy === 'iterate' &&
-                        !draft.result.trim())
-                    "
-                    @click="optimize()"
-                    ><template #icon><ArrowUp aria-hidden="true" /></template
-                  ></n-button>
-                </div>
-              </div>
-            </div>
-          </footer>
+              <n-button
+                v-if="!models.length"
+                quaternary
+                @click="openUtilities('model')"
+                >添加供应商</n-button
+              >
+            </template>
+          </prompt-workspace>
         </template>
       </main>
     </div>
@@ -2430,7 +2039,6 @@ onUnmounted(() => {
           v-if="resultMode === 'compare'"
           :source="comparisonSource"
           :result="draft.result"
-          :changes="changes"
         />
         <pre
           v-else-if="resultMode === 'source'"
@@ -2465,71 +2073,6 @@ onUnmounted(() => {
           @utilities="openUtilities"
         /> </n-drawer-content
     ></n-drawer>
-    <n-drawer v-model:show="showHistory" :width="drawerWidth" to=".app-root">
-      <n-drawer-content
-        title="版本历史"
-        closable
-        :native-scrollbar="false"
-        :scrollbar-props="{
-          themeOverrides: {
-            width: '5px',
-            borderRadius: '999px',
-            color: 'var(--scroll-thumb)',
-            colorHover:
-              'color-mix(in srgb, var(--scroll-thumb) 70%, var(--accent))',
-            railColor: 'transparent',
-          },
-        }"
-      >
-        <p v-if="!draft?.versions.length" class="muted">
-          完成一次优化后，历史版本会出现在这里。
-        </p>
-        <template v-else>
-          <div
-            class="version-list"
-            role="group"
-            aria-label="历史版本列表"
-            tabindex="0"
-          >
-            <button
-              v-for="version in draft.versions"
-              :key="version.id"
-              :class="{ selected: selectedVersion?.id === version.id }"
-              @click="selectedVersion = version"
-            >
-              <strong>{{
-                version.instruction || version.model
-              }}</strong><span>{{
-                new Date(version.created).toLocaleString("zh-CN")
-              }}</span>
-            </button>
-          </div>
-          <div
-            v-if="selectedVersion"
-            :key="selectedVersion.id"
-            class="version-detail"
-          >
-            <h3>原稿</h3>
-            <pre
-              class="version-source"
-              tabindex="0"
-              aria-label="历史版本原稿"
-              >{{ selectedVersion.source }}</pre>
-            <h3>优化稿</h3>
-            <pre
-              class="version-result"
-              tabindex="0"
-              aria-label="历史版本优化稿"
-              >{{ selectedVersion.result }}</pre>
-            <div class="version-actions">
-              <n-button type="primary" @click="restoreVersion">
-                恢复当前版本
-              </n-button>
-            </div>
-          </div>
-        </template>
-      </n-drawer-content></n-drawer
-    >
   </div>
   <n-modal
     v-model:show="showClose"

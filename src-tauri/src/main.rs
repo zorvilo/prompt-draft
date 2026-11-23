@@ -53,7 +53,6 @@ fn main() {
             commands::usage_catalog_rows,
             commands::save_usage_catalog_price,
             commands::update_usage_catalog,
-            commands::save,
             commands::save_changes,
             commands::set_key,
             commands::has_key,

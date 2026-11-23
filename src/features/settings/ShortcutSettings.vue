@@ -27,7 +27,10 @@ function start(action: ShortcutAction) {
   if (saving.value) return;
   feedbackAction.value = action;
   recording.value = action;
-  candidate.value = "";
+  candidate.value =
+    action === "newlineAlternate"
+      ? { ...defaultShortcuts, ...props.data.shortcuts }.newlineAlternate
+      : "";
   error.value = "";
 }
 function capture(event: KeyboardEvent) {
@@ -51,16 +54,21 @@ function capture(event: KeyboardEvent) {
     return;
   }
   if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
-  candidate.value = shortcutFromEvent(event);
-  error.value = shortcutError(candidate.value);
+  candidate.value =
+    recording.value === "newlineAlternate" && event.key === "Backspace"
+      ? ""
+      : shortcutFromEvent(event);
+  error.value = shortcutError(candidate.value, recording.value);
   const other = shortcutActions.find(
     (item) =>
+      !!candidate.value &&
       item.id !== recording.value &&
       candidate.value ===
         { ...defaultShortcuts, ...props.data.shortcuts }[item.id],
   );
   if (!error.value && other)
     error.value = "与「" + other.label + "」冲突，请换一个组合。";
+  if (error.value) message.warning(error.value);
 }
 async function update(value: NonNullable<Workspace["shortcuts"]>) {
   saving.value = true;
@@ -71,6 +79,7 @@ async function update(value: NonNullable<Workspace["shortcuts"]>) {
       message.success("快捷键已保存");
     } else {
       error.value = "保存失败，原快捷键已保留，请重新录入后重试。";
+      message.error(error.value);
     }
   } catch {
     error.value = "保存失败，原快捷键已保留，请重新录入后重试。";
@@ -84,7 +93,10 @@ async function finish(action: ShortcutAction) {
   recording.value = undefined;
   if (error.value) return;
   const current = { ...defaultShortcuts, ...props.data.shortcuts };
-  if (!candidate.value || candidate.value === current[action]) {
+  if (
+    (!candidate.value && action !== "newlineAlternate") ||
+    candidate.value === current[action]
+  ) {
     feedbackAction.value = undefined;
     return;
   }
@@ -96,7 +108,10 @@ function restore(action: ShortcutAction) {
     ...props.data.shortcuts,
     [action]: defaultShortcuts[action],
   };
-  if (new Set(Object.values(next)).size !== Object.values(next).length) {
+  if (
+    new Set(Object.values(next).filter(Boolean)).size !==
+    Object.values(next).filter(Boolean).length
+  ) {
     message.warning("默认快捷键已被另一操作使用，请先调整该操作。");
     return;
   }
@@ -118,66 +133,73 @@ onUnmounted(() => window.removeEventListener("keydown", capture, true));
       >
     </div>
     <div class="preference-card">
-      <div
-        v-for="action in shortcutActions"
-        :key="action.id"
-        class="shortcut-setting"
-      >
-        <div class="preference-row">
-          <h3>{{ action.label }}</h3>
-          <div class="shortcut-actions">
-            <n-button
-              class="shortcut-recorder"
-              :class="{
-                'is-recording': recording === action.id,
-                'has-error': feedbackAction === action.id && !!error,
-              }"
-              :aria-invalid="feedbackAction === action.id && !!error"
-              :aria-label="'修改' + action.label + '快捷键'"
-              :aria-pressed="recording === action.id"
-              :disabled="saving"
-              title="点击修改快捷键"
-              @click="start(action.id)"
-              @blur="finish(action.id)"
-            >
-              <span v-if="recording === action.id && !candidate"
-                >请按下组合键</span
+      <template v-for="action in shortcutActions" :key="action.id">
+        <div class="shortcut-setting">
+          <div class="preference-row">
+            <h3>{{ action.label }}</h3>
+            <div class="shortcut-actions">
+              <n-button
+                class="shortcut-recorder"
+                :class="{
+                  'is-recording': recording === action.id,
+                  'has-error': feedbackAction === action.id && !!error,
+                }"
+                :aria-invalid="feedbackAction === action.id && !!error"
+                :aria-label="'修改' + action.label + '快捷键'"
+                :aria-pressed="recording === action.id"
+                :disabled="saving"
+                :title="
+                  action.id === 'newlineAlternate'
+                    ? '点击修改，按 Backspace 清空'
+                    : '点击修改快捷键'
+                "
+                @click="start(action.id)"
+                @blur="finish(action.id)"
               >
-              <span v-else class="shortcut-keys"
-                ><kbd
-                  v-for="key in shortcutLabels(
-                    recording === action.id
+                <span
+                  v-if="
+                    recording === action.id &&
+                    !candidate &&
+                    action.id !== 'newlineAlternate'
+                  "
+                  >请按下快捷键</span
+                >
+                <span
+                  v-else-if="
+                    !(recording === action.id
                       ? candidate
-                      : { ...defaultShortcuts, ...data.shortcuts }[action.id],
-                  )"
-                  :key="key"
-                  >{{ key }}</kbd
-                ></span
+                      : { ...defaultShortcuts, ...data.shortcuts }[action.id])
+                  "
+                  >未设置</span
+                >
+                <span v-else class="shortcut-keys"
+                  ><kbd
+                    v-for="key in shortcutLabels(
+                      recording === action.id
+                        ? candidate
+                        : { ...defaultShortcuts, ...data.shortcuts }[action.id],
+                    )"
+                    :key="key"
+                    >{{ key }}</kbd
+                  ></span
+                >
+              </n-button>
+              <n-button
+                size="tiny"
+                quaternary
+                :disabled="
+                  saving ||
+                  recording === action.id ||
+                  { ...defaultShortcuts, ...data.shortcuts }[action.id] ===
+                    defaultShortcuts[action.id]
+                "
+                @click="restore(action.id)"
+                >恢复默认</n-button
               >
-            </n-button>
-            <n-button
-              size="tiny"
-              quaternary
-              :disabled="
-                saving ||
-                recording === action.id ||
-                { ...defaultShortcuts, ...data.shortcuts }[action.id] ===
-                  defaultShortcuts[action.id]
-              "
-              @click="restore(action.id)"
-              >恢复默认</n-button
-            >
+            </div>
           </div>
         </div>
-        <div v-if="feedbackAction === action.id" class="shortcut-feedback">
-          <p :class="{ 'shortcut-error': error }" role="status">
-            {{
-              error ||
-              (saving ? "正在保存…" : "移出输入框自动保存，按 Esc 取消。")
-            }}
-          </p>
-        </div>
-      </div>
+      </template>
     </div>
   </section>
 </template>

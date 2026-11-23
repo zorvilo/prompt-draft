@@ -683,11 +683,11 @@ async function run(action: "test" | "save" | "clear") {
                       / </span
                     >{{
                       data.drafts.reduce(
-                        (total, item) => total + item.versions.length,
+                        (total, item) => total + item.messages.length,
                         0,
                       )
                     }}
-                    个版本</span
+                    条聊天消息</span
                   >
                 </div>
                 <div class="preference-row">
@@ -722,7 +722,7 @@ async function run(action: "test" | "save" | "clear") {
                 <div class="backup-scope">
                   <Info :size="16" aria-hidden="true" />
                   <p>
-                    备份包含项目、草稿、版本、用户模板及分类、供应商、应用设置、用量、价格和目录缓存，<strong
+                    备份包含项目、草稿、聊天记录、用户模板及分类、供应商、应用设置、用量、价格和目录缓存，<strong
                       >包含明文 API Key</strong
                     >。请妥善保管文件。新电脑请使用同版本软件恢复，开机自启需重新设置。
                   </p>
@@ -744,7 +744,7 @@ async function run(action: "test" | "save" | "clear") {
                     全部应用数据本地保存，不上传至词稿服务器。
                   </p>
                   <p class="privacy-detail">
-                    草稿、历史版本、项目、模板、设置、用量记录和 API Key
+                    草稿、聊天记录、项目、模板、设置、用量记录和 API Key
                     均保存在本机。词稿不提供云端同步。
                   </p>
                   <p class="privacy-note">请妥善保管电脑、数据文件及备份。</p>

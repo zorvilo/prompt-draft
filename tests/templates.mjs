@@ -16,10 +16,10 @@ const workspace = () => ({
   activeProfile: null,
 });
 const fresh = workspace();
-assert.equal(availableTemplates(fresh).length, 7);
+assert.equal(availableTemplates(fresh).length, 3);
 assert.deepEqual(
   builtinCategories.map((item) => item.value),
-  ["basic", "context", "iteration"],
+  ["basic"],
 );
 assert.ok(
   templates.every(
@@ -35,13 +35,13 @@ const user = {
   templates: [custom],
   templateCategories: [{ id: "mine", name: "我的分类" }],
 };
-assert.equal(availableTemplates(user).length, 8);
+assert.equal(availableTemplates(user).length, 4);
 assert.equal(availableTemplates(user).at(-1), custom);
 const collision = {
   ...workspace(),
   templates: [{ ...templates[0], content: "伪造覆盖" }],
 };
-assert.equal(availableTemplates(collision).length, 7);
+assert.equal(availableTemplates(collision).length, 3);
 assert.equal(availableTemplates(collision)[0].content, templates[0].content);
 assert.ok(isBuiltinCategory("basic") && !isBuiltinCategory("mine"));
 console.log(

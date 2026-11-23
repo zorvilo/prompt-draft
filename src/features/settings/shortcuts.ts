@@ -1,23 +1,25 @@
 export const defaultShortcuts = {
   newDraft: "Ctrl+KeyN",
-  optimize: "Ctrl+Enter",
+  optimize: "Enter",
+  newline: "Shift+Enter",
+  newlineAlternate: "Alt+Enter",
   rename: "Ctrl+Alt+KeyR",
   pin: "Ctrl+Alt+KeyP",
   favorite: "Ctrl+Alt+KeyF",
   delete: "Ctrl+Shift+Delete",
   copyResult: "Ctrl+Alt+KeyC",
-  history: "Ctrl+Alt+KeyH",
 };
 export type ShortcutAction = keyof typeof defaultShortcuts;
 export const shortcutActions: { id: ShortcutAction; label: string }[] = [
   { id: "newDraft", label: "新建草稿" },
-  { id: "optimize", label: "优化当前提示词" },
+  { id: "optimize", label: "提交（优化 / 发送）" },
+  { id: "newline", label: "换行" },
+  { id: "newlineAlternate", label: "换行（备用）" },
   { id: "rename", label: "重命名" },
   { id: "pin", label: "置顶 / 取消置顶" },
   { id: "favorite", label: "收藏 / 取消收藏" },
   { id: "delete", label: "删除草稿" },
   { id: "copyResult", label: "复制草稿" },
-  { id: "history", label: "版本历史" },
 ];
 
 export function shortcutFromEvent(event: KeyboardEvent): string {
@@ -32,7 +34,8 @@ export function shortcutFromEvent(event: KeyboardEvent): string {
     .join("+");
 }
 
-export function shortcutError(value: string): string {
+export function shortcutError(value: string, action?: ShortcutAction): string {
+  if (action === "newlineAlternate" && value === "") return "";
   if (
     value.includes("Meta+") ||
     [
@@ -59,10 +62,9 @@ export function shortcutError(value: string): string {
   if (
     !/^(Ctrl\+)?(Alt\+)?(Shift\+)?(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-2])|Enter|Space|Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown|Insert|Delete|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Comma|Period|Slash)$/.test(
       value,
-    ) ||
-    !/^(Ctrl|Alt)\+/.test(value)
+    )
   )
-    return "请使用 Ctrl 或 Alt 与普通按键的组合。";
+    return "请按下一个按键或组合键。";
   return "";
 }
 

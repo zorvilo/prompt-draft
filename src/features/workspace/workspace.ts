@@ -67,11 +67,11 @@ export function useWorkspace() {
       title,
       source,
       result: "",
-      question: null,
+
       favorite: false,
       pinned: false,
       opened: Date.now(),
-      versions: [],
+      messages: [],
     };
     data.value.drafts.push(item);
     openDraft(item.id);

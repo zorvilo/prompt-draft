@@ -10,10 +10,10 @@ const initial = {
       title: "草稿",
       source: "原稿",
       result: "",
-      question: null,
+
       favorite: false,
       opened: 1,
-      versions: [],
+      messages: [],
     },
   ],
   profiles: [],

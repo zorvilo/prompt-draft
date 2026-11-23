@@ -663,7 +663,7 @@ pub fn update_catalog(
         .ok_or("请输入有效的人民币兑美元换算值。")?;
     let failed = |_| "更新价格目录失败。";
     let seed: std::collections::BTreeMap<String, [String; 4]> =
-        serde_json::from_str(include_str!("usage_prices_cc_switch.json"))
+        serde_json::from_str(include_str!("usage_prices_builtin.json"))
             .map_err(|_| "无法读取内置价格目录。")?;
     let mut quotes = Vec::new();
     for (model, values) in seed {

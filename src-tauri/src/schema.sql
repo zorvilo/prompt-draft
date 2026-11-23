@@ -2,18 +2,21 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS drafts(
     id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
-    title TEXT NOT NULL, source TEXT NOT NULL, result TEXT NOT NULL, question TEXT,
+    title TEXT NOT NULL, source TEXT NOT NULL, result TEXT NOT NULL,
     is_pinned INTEGER NOT NULL CHECK(is_pinned IN (0,1)), is_favorite INTEGER NOT NULL CHECK(is_favorite IN (0,1)),
     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS drafts_project ON drafts(project_id);
 CREATE INDEX IF NOT EXISTS drafts_updated ON drafts(updated_at DESC);
-CREATE TABLE IF NOT EXISTS draft_versions(
+CREATE TABLE IF NOT EXISTS draft_messages(
     id TEXT PRIMARY KEY, draft_id TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
-    source TEXT NOT NULL, result TEXT NOT NULL, question TEXT, instruction TEXT,
-    provider_name TEXT NOT NULL, model_id TEXT NOT NULL, created_at INTEGER NOT NULL
+    position INTEGER NOT NULL CHECK(position>=0), data_json TEXT NOT NULL CHECK(json_valid(data_json)),
+    UNIQUE(draft_id,position)
 );
-CREATE INDEX IF NOT EXISTS draft_versions_draft ON draft_versions(draft_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS draft_dialogues(
+    draft_id TEXT PRIMARY KEY REFERENCES drafts(id) ON DELETE CASCADE,
+    state_json TEXT NOT NULL CHECK(json_valid(state_json))
+);
 CREATE TABLE IF NOT EXISTS template_categories(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS templates(
     id TEXT PRIMARY KEY,category_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL,

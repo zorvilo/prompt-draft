@@ -7,10 +7,10 @@ export function duplicateDraft(item: Draft): Draft {
     title: (item.title || "未命名草稿").slice(0, 97) + " 副本",
     source: item.source,
     result: item.result,
-    question: null,
+
     favorite: false,
     pinned: false,
     opened: Date.now(),
-    versions: [],
+    messages: [],
   };
 }

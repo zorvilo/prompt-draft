@@ -39,12 +39,6 @@ pub fn load(state: State<AppState>) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn save(state: State<AppState>, document: String) -> Result<(), String> {
-    let workspace = storage::parse(&document)?;
-    storage::save(&state.database.lock().unwrap(), &workspace)
-}
-
-#[tauri::command]
 pub fn save_changes(
     state: State<AppState>,
     changes: storage::WorkspaceChanges,
@@ -137,13 +131,9 @@ pub fn preview_template(
 #[serde(rename_all = "camelCase")]
 pub struct OptimizeRequest {
     profile: storage::Profile,
-    source: String,
     request_id: String,
-    template: optimizer::OptimizationTemplate,
-    revision: Option<optimizer::Revision>,
-    template_content: String,
-    user_content: Option<String>,
-    followup: Option<optimizer::Revision>,
+    conversation: optimizer::Conversation,
+    mode: optimizer::ModificationMode,
 }
 
 #[tauri::command]
@@ -151,34 +141,20 @@ pub async fn optimize(
     state: State<'_, AppState>,
     input: OptimizeRequest,
     on_delta: Channel<String>,
-) -> Result<String, String> {
+) -> Result<optimizer::OptimizationResult, String> {
     let _operation = state.operations.read().await;
     let OptimizeRequest {
         profile,
-        source,
         request_id,
-        template,
-        revision,
-        template_content,
-        user_content,
-        followup,
+        conversation,
+        mode,
     } = input;
-    let kind = if followup.is_some() {
+    let kind = if conversation.messages.len() > 1 {
         "followup"
     } else {
         "optimize"
     };
-    let messages = if let Some(followup) = followup {
-        optimizer::followup_messages(&followup, &template_content, user_content.as_deref())?
-    } else {
-        optimizer::messages(
-            &source,
-            template,
-            revision.as_ref(),
-            &template_content,
-            user_content.as_deref(),
-        )?
-    };
+    let messages = optimizer::conversation_messages(&conversation, mode)?;
     let key = state.key(&profile)?;
     if key.is_empty() {
         return Err("请先在「模型」页面填写 API Key。".into());
@@ -200,6 +176,7 @@ pub async fn optimize(
             result,
         _ = receiver => { cancelled = true; Err("已取消优化。".into()) },
     };
+    let result = result.and_then(|text| optimizer::parse_reply(&text));
     state.requests.lock().unwrap().remove(&request_id);
     state.record_usage(
         &profile,

@@ -12,21 +12,33 @@ pub struct Project {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Version {
-    id: String,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChatContext {
     source: String,
-    result: String,
-    question: Option<String>,
-    model: String,
-    #[serde(
-        default,
-        rename = "providerName",
-        skip_serializing_if = "Option::is_none"
-    )]
-    provider_name: Option<String>,
+    template_id: String,
+    template_name: String,
+    system_prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_draft: Option<String>,
+    mode: crate::optimizer::ModificationMode,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChatMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    duration_ms: Option<u64>,
+    id: String,
+    role: crate::optimizer::ConversationRole,
+    content: String,
     created: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    instruction: Option<String>,
+    display_content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context: Option<ChatContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider_name: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -37,14 +49,78 @@ pub struct Draft {
     title: String,
     source: String,
     result: String,
-    question: Option<String>,
     favorite: bool,
     #[serde(default)]
     pinned: bool,
     opened: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     updated: Option<u64>,
-    versions: Vec<Version>,
+    messages: Vec<ChatMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dialogue: Option<DialogueState>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DialogueState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<crate::optimizer::ModificationMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chat_input: Option<String>,
+}
+
+fn validate_dialogue(draft: &Draft) -> Result<(), String> {
+    use crate::optimizer::ConversationRole;
+    if draft
+        .dialogue
+        .as_ref()
+        .and_then(|state| state.chat_input.as_ref())
+        .is_some_and(|text| text.chars().count() > 30_000)
+    {
+        return Err("对话输入最多 30,000 字。".into());
+    }
+    let mut ids = HashSet::new();
+    for (index, message) in draft.messages.iter().enumerate() {
+        let user = message.role == ConversationRole::User;
+        if message.id.is_empty()
+            || message.id.len() > 200
+            || !ids.insert(&message.id)
+            || (!user && (index == 0 || draft.messages[index - 1].role != ConversationRole::User))
+            || message.content.trim().is_empty()
+            || message.content.chars().count() > 120_000
+            || message
+                .display_content
+                .as_ref()
+                .is_some_and(|text| text.chars().count() > 120_000)
+            || message
+                .model
+                .as_ref()
+                .is_some_and(|text| text.chars().count() > 200)
+            || message
+                .provider_name
+                .as_ref()
+                .is_some_and(|text| text.chars().count() > 200)
+            || user != message.context.is_some()
+        {
+            return Err("聊天消息的 ID、顺序、内容或请求信息无效。".into());
+        }
+        if let Some(context) = &message.context {
+            let request = crate::optimizer::Conversation {
+                source: context.source.clone(),
+                template_id: context.template_id.clone(),
+                template_name: context.template_name.clone(),
+                system_prompt: context.system_prompt.clone(),
+                current_draft: context.current_draft.clone(),
+                messages: vec![crate::optimizer::ConversationMessage {
+                    role: message.role.clone(),
+                    content: message.content.clone(),
+                    display_content: message.display_content.clone(),
+                }],
+            };
+            crate::optimizer::validate_conversation(&request, false)?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -97,6 +173,10 @@ enum CloseBehavior {
 struct Shortcuts {
     new_draft: String,
     optimize: String,
+    #[serde(default = "shortcut_newline")]
+    newline: String,
+    #[serde(default = "shortcut_newline_alternate")]
+    newline_alternate: String,
     #[serde(default = "shortcut_rename")]
     rename: String,
     #[serde(default = "shortcut_pin")]
@@ -107,8 +187,13 @@ struct Shortcuts {
     delete: String,
     #[serde(default = "shortcut_copy_result")]
     copy_result: String,
-    #[serde(default = "shortcut_history")]
-    history: String,
+}
+
+fn shortcut_newline() -> String {
+    "Shift+Enter".into()
+}
+fn shortcut_newline_alternate() -> String {
+    "Alt+Enter".into()
 }
 
 fn shortcut_rename() -> String {
@@ -126,21 +211,20 @@ fn shortcut_delete() -> String {
 fn shortcut_copy_result() -> String {
     "Ctrl+Alt+KeyC".into()
 }
-fn shortcut_history() -> String {
-    "Ctrl+Alt+KeyH".into()
-}
 fn invalid_shortcuts(keys: &Shortcuts) -> bool {
     let values = [
-        &keys.new_draft,
         &keys.optimize,
+        &keys.newline,
+        &keys.new_draft,
         &keys.rename,
         &keys.pin,
         &keys.favorite,
         &keys.delete,
         &keys.copy_result,
-        &keys.history,
     ];
-    values.iter().any(|value| !valid_shortcut(value))
+    (!keys.newline_alternate.is_empty()
+        && (!valid_shortcut(&keys.newline_alternate) || values.contains(&&keys.newline_alternate)))
+        || values.iter().any(|value| !valid_shortcut(value))
         || values
             .iter()
             .collect::<std::collections::HashSet<_>>()
@@ -160,9 +244,6 @@ fn valid_shortcut(value: &str) -> bool {
     }
     if let Some(rest) = code.strip_prefix("Shift+") {
         code = rest;
-    }
-    if ctrl.is_none() && alt.is_none() {
-        return false;
     }
     let valid_code = code
         .strip_prefix("Key")
@@ -220,6 +301,7 @@ fn valid_shortcut(value: &str) -> bool {
         .contains(&value)
 }
 
+#[cfg(test)]
 pub const MAX_BACKUP: usize = 32 * 1024 * 1024;
 
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
@@ -250,6 +332,7 @@ pub fn save_key(connection: &Connection, profile: &Profile, key: &str) -> rusqli
     tx.commit()
 }
 
+#[cfg(test)]
 pub fn parse(input: &str) -> Result<Workspace, String> {
     if input.len() > MAX_BACKUP {
         return Err("工作区数据超过 32 MB，请先导出并归档部分稿件。".into());
@@ -259,14 +342,14 @@ pub fn parse(input: &str) -> Result<Workspace, String> {
     let projects: HashSet<_> = workspace.projects.iter().map(|item| &item.id).collect();
     let drafts: HashSet<_> = workspace.drafts.iter().map(|item| &item.id).collect();
     let profiles: HashSet<_> = workspace.profiles.iter().map(|item| &item.id).collect();
-    let mut version_ids = HashSet::new();
-    if workspace
-        .drafts
-        .iter()
-        .flat_map(|draft| &draft.versions)
-        .any(|version| version.id.is_empty() || !version_ids.insert(&version.id))
-    {
-        return Err("版本 ID 为空或重复。".into());
+    let mut message_ids = HashSet::new();
+    for draft in &workspace.drafts {
+        validate_dialogue(draft)?;
+        for message in &draft.messages {
+            if !message_ids.insert(&message.id) {
+                return Err("聊天消息 ID 重复。".into());
+            }
+        }
     }
     let bad_project = workspace.drafts.iter().any(|draft| {
         draft
@@ -366,14 +449,38 @@ pub fn load(connection: &Connection) -> rusqlite::Result<Option<String>> {
     };
     let preferences: serde_json::Value = decode(preferences)?;
     let ui: serde_json::Value = decode(ui)?;
-    let mut drafts:Vec<Draft>=json_rows(connection,"SELECT json_object('id',id,'projectId',project_id,'title',title,'source',source,'result',result,'question',question,'favorite',json(CASE WHEN is_favorite THEN 'true' ELSE 'false' END),'pinned',json(CASE WHEN is_pinned THEN 'true' ELSE 'false' END),'opened',created_at,'updated',updated_at,'versions',json('[]')) FROM drafts ORDER BY created_at,rowid")?;
-    let mut versions: HashMap<String, Vec<Version>> = HashMap::new();
-    for row in connection.prepare("SELECT draft_id,json_object('id',id,'source',source,'result',result,'question',question,'instruction',instruction,'model',model_id,'providerName',provider_name,'created',created_at) FROM draft_versions ORDER BY created_at DESC,rowid DESC")?.query_map([],|r|Ok((r.get::<_,String>(0)?,decode::<Version>(r.get(1)?)?)))? {
-        let (draft_id,version)=row?;
-        versions.entry(draft_id).or_default().push(version);
+    let mut drafts:Vec<Draft>=json_rows(connection,"SELECT json_object('id',id,'projectId',project_id,'title',title,'source',source,'result',result,'favorite',json(CASE WHEN is_favorite THEN 'true' ELSE 'false' END),'pinned',json(CASE WHEN is_pinned THEN 'true' ELSE 'false' END),'opened',created_at,'updated',updated_at,'messages',json('[]')) FROM drafts ORDER BY created_at,rowid")?;
+    let mut messages: HashMap<String, Vec<ChatMessage>> = HashMap::new();
+    for row in connection
+        .prepare(
+            "SELECT id,draft_id,data_json,position FROM draft_messages ORDER BY draft_id,position",
+        )?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                decode::<ChatMessage>(row.get(2)?)?,
+                row.get::<_, usize>(3)?,
+            ))
+        })?
+    {
+        let (id, draft_id, message, position) = row?;
+        let entries = messages.entry(draft_id).or_default();
+        if id != message.id || position != entries.len() {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        entries.push(message);
     }
     for draft in &mut drafts {
-        draft.versions = versions.remove(&draft.id).unwrap_or_default();
+        draft.messages = messages.remove(&draft.id).unwrap_or_default();
+        draft.dialogue = connection
+            .query_row(
+                "SELECT state_json FROM draft_dialogues WHERE draft_id=?1",
+                [&draft.id],
+                |row| decode(row.get(0)?),
+            )
+            .optional()?;
+        validate_dialogue(draft).map_err(|_| rusqlite::Error::InvalidQuery)?;
     }
     let workspace=Workspace {
         schema:1,
@@ -409,21 +516,28 @@ fn upsert_provider(db: &Connection, item: &Profile) -> rusqlite::Result<()> {
     Ok(())
 }
 fn upsert_draft(db: &Connection, item: &Draft) -> rusqlite::Result<()> {
-    db.execute("INSERT INTO drafts VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,title=excluded.title,source=excluded.source,result=excluded.result,question=excluded.question,is_pinned=excluded.is_pinned,is_favorite=excluded.is_favorite,updated_at=excluded.updated_at
-        WHERE (project_id,title,source,result,question,is_pinned,is_favorite,updated_at) IS NOT (excluded.project_id,excluded.title,excluded.source,excluded.result,excluded.question,excluded.is_pinned,excluded.is_favorite,excluded.updated_at)",params![item.id,item.project_id,item.title,item.source,item.result,item.question,item.pinned,item.favorite,item.opened,item.updated.unwrap_or(item.opened)])?;
-    let ids: Vec<_> = item.versions.iter().map(|v| &v.id).collect();
-    db.execute("DELETE FROM draft_versions WHERE draft_id=?1 AND id NOT IN(SELECT value FROM json_each(?2))",params![item.id,serde_json::to_string(&ids).unwrap()])?;
-    for version in item.versions.iter().rev() {
+    validate_dialogue(item).map_err(|_| rusqlite::Error::InvalidQuery)?;
+    db.execute("INSERT INTO drafts(id,project_id,title,source,result,is_pinned,is_favorite,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,title=excluded.title,source=excluded.source,result=excluded.result,is_pinned=excluded.is_pinned,is_favorite=excluded.is_favorite,updated_at=excluded.updated_at
+        WHERE (project_id,title,source,result,is_pinned,is_favorite,updated_at) IS NOT (excluded.project_id,excluded.title,excluded.source,excluded.result,excluded.is_pinned,excluded.is_favorite,excluded.updated_at)",params![item.id,item.project_id,item.title,item.source,item.result,item.pinned,item.favorite,item.opened,item.updated.unwrap_or(item.opened)])?;
+    if let Some(dialogue) = &item.dialogue {
+        let state = serde_json::to_string(dialogue).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        db.execute("INSERT INTO draft_dialogues VALUES(?1,?2) ON CONFLICT(draft_id) DO UPDATE SET state_json=excluded.state_json WHERE state_json IS NOT excluded.state_json", params![item.id, state])?;
+    } else {
+        db.execute("DELETE FROM draft_dialogues WHERE draft_id=?1", [&item.id])?;
+    }
+    let ids: Vec<_> = item.messages.iter().map(|message| &message.id).collect();
+    db.execute("DELETE FROM draft_messages WHERE draft_id=?1 AND id NOT IN(SELECT value FROM json_each(?2))",params![item.id,serde_json::to_string(&ids).unwrap()])?;
+    for (position, message) in item.messages.iter().enumerate() {
         let occupied: bool = db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM draft_versions WHERE id=?1 AND draft_id<>?2)",
-            params![version.id, item.id],
-            |r| r.get(0),
+            "SELECT EXISTS(SELECT 1 FROM draft_messages WHERE id=?1 AND draft_id<>?2)",
+            params![message.id, item.id],
+            |row| row.get(0),
         )?;
         if occupied {
             return Err(rusqlite::Error::InvalidQuery);
         }
-        db.execute("INSERT INTO draft_versions VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(id) DO UPDATE SET source=excluded.source,result=excluded.result,question=excluded.question,instruction=excluded.instruction,provider_name=excluded.provider_name,model_id=excluded.model_id,created_at=excluded.created_at
-            WHERE draft_id=excluded.draft_id AND (source,result,question,instruction,provider_name,model_id,created_at) IS NOT (excluded.source,excluded.result,excluded.question,excluded.instruction,excluded.provider_name,excluded.model_id,excluded.created_at)",params![version.id,item.id,version.source,version.result,version.question,version.instruction,version.provider_name.as_deref().unwrap_or(""),version.model,version.created])?;
+        let data = serde_json::to_string(message).map_err(|_| rusqlite::Error::InvalidQuery)?;
+        db.execute("INSERT INTO draft_messages VALUES(?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET position=excluded.position,data_json=excluded.data_json WHERE (position,data_json) IS NOT (excluded.position,excluded.data_json)",params![message.id,item.id,position,data])?;
     }
     Ok(())
 }
@@ -528,8 +642,14 @@ pub(crate) fn validate_state(db: &Connection) -> Result<(), String> {
     if !has_projects {
         return Err("至少保留一个项目。".into());
     }
-    let invalid_categories:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM templates t WHERE category_id NOT IN ('basic','context','iteration') AND NOT EXISTS(SELECT 1 FROM template_categories c WHERE c.id=t.category_id))",[],|r|r.get(0)).map_err(|_|"无法检查模板分类。")?;
-    let builtin_categories:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM template_categories WHERE id IN ('basic','context','iteration'))",[],|r|r.get(0)).map_err(|_|"无法检查系统分类。")?;
+    let invalid_categories:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM templates t WHERE category_id <> 'basic' AND NOT EXISTS(SELECT 1 FROM template_categories c WHERE c.id=t.category_id))",[],|r|r.get(0)).map_err(|_|"无法检查模板分类。")?;
+    let builtin_categories: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM template_categories WHERE id = 'basic')",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|_| "无法检查系统分类。")?;
     let builtin: serde_json::Value = serde_json::from_str(include_str!(
         "../../src/features/library/upstream/builtin-templates.json"
     ))
@@ -575,12 +695,13 @@ pub fn apply_changes(db: &Connection, changes: &WorkspaceChanges) -> Result<(), 
     check_changes(&changes.profiles, |v| &v.id)?;
     check_changes(&changes.templates, |v| &v.id)?;
     check_changes(&changes.template_categories, |v| &v.id)?;
-    let mut version_ids = HashSet::new();
+    let mut message_ids = HashSet::new();
     if let Some(items) = &changes.drafts {
         for draft in &items.upsert {
-            for version in &draft.versions {
-                if version.id.is_empty() || !version_ids.insert(&version.id) {
-                    return Err("版本 ID 为空或重复。".into());
+            validate_dialogue(draft)?;
+            for message in &draft.messages {
+                if !message_ids.insert(&message.id) {
+                    return Err("聊天消息 ID 重复。".into());
                 }
             }
         }
@@ -590,6 +711,7 @@ pub fn apply_changes(db: &Connection, changes: &WorkspaceChanges) -> Result<(), 
     validate_state(&tx)?;
     tx.commit().map_err(|_| "无法完成保存。".into())
 }
+#[cfg(test)]
 fn replace_changes<T: Clone>(
     db: &Connection,
     table: &str,
@@ -609,6 +731,7 @@ fn replace_changes<T: Clone>(
         remove: removed,
     })
 }
+#[cfg(test)]
 pub fn save(db: &Connection, document: &Workspace) -> Result<(), String> {
     let tx = db.unchecked_transaction().map_err(|_| "无法开始保存。")?;
     let changes = (|| -> rusqlite::Result<_> {
@@ -713,12 +836,35 @@ mod tests {
     #[test]
     fn fresh_database_has_only_current_schema_and_reopens_without_changes() {
         let db = open(Path::new(":memory:")).unwrap();
+        let draft_columns: Vec<String> = db
+            .prepare("PRAGMA table_info(drafts)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            draft_columns,
+            vec![
+                "id",
+                "project_id",
+                "title",
+                "source",
+                "result",
+                "is_pinned",
+                "is_favorite",
+                "created_at",
+                "updated_at"
+            ]
+        );
+
         let names: Vec<String>=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap().query_map([],|r|r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
         assert_eq!(
             names,
             vec![
                 "app_settings",
-                "draft_versions",
+                "draft_dialogues",
+                "draft_messages",
                 "drafts",
                 "model_prices",
                 "models_dev_cache",
@@ -749,8 +895,10 @@ mod tests {
         assert!(workspace.shortcuts.is_none());
         let mut document: serde_json::Value = serde_json::from_str(input).unwrap();
         document["closeBehavior"] = serde_json::json!("hide");
-        document["shortcuts"] =
-            serde_json::json!({"newDraft":"Ctrl+Shift+KeyN","optimize":"Alt+Enter"});
+        document["shortcuts"] = serde_json::json!({"newDraft":"Ctrl+Shift+KeyN","optimize":"Alt+Enter","newlineAlternate":""});
+        document["shortcuts"]["newline"] = serde_json::json!("Alt+Enter");
+        assert!(parse(&document.to_string()).is_err());
+        document["shortcuts"]["newline"] = serde_json::json!("Shift+Enter");
         let connection = open(Path::new(":memory:")).unwrap();
         save(&connection, &parse(&document.to_string()).unwrap()).unwrap();
         let saved = load(&connection).unwrap().unwrap();
@@ -782,12 +930,14 @@ mod tests {
             "Ctrl+Alt+Digit1",
             "Alt+Shift+Enter",
             "Ctrl+F12",
+            "KeyN",
+            "Shift+KeyN",
+            "Enter",
+            "F2",
         ] {
             assert!(valid_shortcut(value), "{value}");
         }
         for value in [
-            "KeyN",
-            "Shift+KeyN",
             "Meta+KeyN",
             "Ctrl+KeyC",
             "Alt+F4",
@@ -823,7 +973,7 @@ mod tests {
 
     #[test]
     fn accepts_unassigned_drafts_and_validates_explicit_project_ids() {
-        let input = r#"{"schema":1,"projects":[{"id":"p","name":"测试"}],"drafts":[{"id":"d","projectId":null,"title":"","source":"原稿","result":"","favorite":false,"opened":0,"versions":[]}],"profiles":[],"activeProfile":null,"activeDraft":"d","theme":"system"}"#;
+        let input = r#"{"schema":1,"projects":[{"id":"p","name":"测试"}],"drafts":[{"id":"d","projectId":null,"title":"","source":"原稿","result":"","favorite":false,"opened":0,"messages":[]}],"profiles":[],"activeProfile":null,"activeDraft":"d","theme":"system"}"#;
         let workspace = parse(input).unwrap();
         assert_eq!(workspace.drafts[0].project_id, None);
         let connection = open(Path::new(":memory:")).unwrap();
@@ -859,7 +1009,7 @@ mod relational_tests {
     use super::*;
     use serde_json::json;
     fn fixture() -> Workspace {
-        parse(&json!({"schema":1,"projects":[{"id":"p","name":"项目"},{"id":"other","name":"其他"}],"drafts":[{"id":"d","projectId":"p","title":"草稿","source":"原稿","result":"优化稿","question":null,"favorite":false,"pinned":true,"opened":100,"updated":200,"versions":[{"id":"v","source":"原稿","result":"版本正文","question":null,"instruction":"精简","model":"deepseek-flash","providerName":"测试供应商","created":150}]}],"profiles":[{"id":"account","name":"测试供应商","presetId":"preset-custom","website":"https://example.com","endpoint":"https://example.com/v1","model":"deepseek-flash","catalog":["deepseek-flash"]}],"activeProfile":"account","activeDraft":"d","theme":"dark","closeBehavior":"hide","shortcuts":{"newDraft":"Ctrl+KeyN","optimize":"Ctrl+Enter"},"uiState":{"recentExpanded":false,"pinnedExpanded":true,"expandedProjects":["p"],"draftListMode":"recent"},"templateCategories":[{"id":"custom","name":"用户分类"}],"templates":[{"id":"t","category":"custom","strategy":"general","name":"用户模板","content":"系统提示词","userContent":"用户提示词","description":"说明"}]}).to_string()).unwrap()
+        parse(&json!({"schema":1,"projects":[{"id":"p","name":"项目"},{"id":"other","name":"其他"}],"drafts":[{"id":"d","projectId":"p","title":"草稿","source":"原稿","result":"优化稿","favorite":false,"pinned":true,"opened":100,"updated":200,"messages":[{"id":"u","role":"user","content":"原稿","created":150,"context":{"mode":"draft","source":"原稿","templateId":"basic","templateName":"基础优化","systemPrompt":"保持原意","currentDraft":"优化稿"}},{"id":"a","role":"assistant","content":"优化稿","created":150,"durationMs":1234,"model":"deepseek-flash","providerName":"测试供应商"}]}],"profiles":[{"id":"account","name":"测试供应商","presetId":"preset-custom","website":"https://example.com","endpoint":"https://example.com/v1","model":"deepseek-flash","catalog":["deepseek-flash"]}],"activeProfile":"account","activeDraft":"d","theme":"dark","closeBehavior":"hide","shortcuts":{"newDraft":"Ctrl+KeyN","optimize":"Ctrl+Enter"},"uiState":{"recentExpanded":false,"pinnedExpanded":true,"expandedProjects":["p"],"draftListMode":"recent"},"templateCategories":[{"id":"custom","name":"用户分类"}],"templates":[{"id":"t","category":"custom","strategy":"general","name":"用户模板","content":"系统提示词","userContent":"用户提示词","description":"说明"}]}).to_string()).unwrap()
     }
     fn patch(db: &Connection, value: serde_json::Value) -> Result<(), String> {
         apply_changes(
@@ -867,6 +1017,97 @@ mod relational_tests {
             &serde_json::from_value::<WorkspaceChanges>(value).unwrap(),
         )
     }
+    #[test]
+    fn messages_roundtrip_incremental_backup_validation_and_cascade() {
+        let db = open(Path::new(":memory:")).unwrap();
+        let mut document = fixture();
+        let state = json!({"mode":"chat","chatInput":"下一条消息"});
+        document.drafts[0].dialogue = Some(serde_json::from_value(state.clone()).unwrap());
+        save(&db, &document).unwrap();
+        let loaded: serde_json::Value = serde_json::from_str(&load(&db).unwrap().unwrap()).unwrap();
+        assert_eq!(loaded["drafts"][0]["dialogue"], state);
+        assert_eq!(
+            loaded["drafts"][0]["messages"],
+            json!(document.drafts[0].messages)
+        );
+        let before = db.total_changes();
+        save(&db, &document).unwrap();
+        assert_eq!(before, db.total_changes());
+        let backup = crate::backup::export(&db).unwrap();
+        let target = open(Path::new(":memory:")).unwrap();
+        crate::backup::restore(&target, &backup).unwrap();
+        assert_eq!(load(&target).unwrap(), load(&db).unwrap());
+        let mut broken: serde_json::Value = serde_json::from_str(&backup).unwrap();
+        broken["tables"]["draft_messages"][0]["data_json"] = json!("{}");
+        assert!(crate::backup::restore(&target, &broken.to_string()).is_err());
+        assert_eq!(load(&target).unwrap(), load(&db).unwrap());
+        let mut invalid = document.drafts[0].clone();
+        invalid.messages[0].role = crate::optimizer::ConversationRole::Assistant;
+        assert!(patch(&db, json!({"drafts":{"upsert":[invalid]}})).is_err());
+        let mut invalid = document.drafts[0].clone();
+        invalid.messages[0]
+            .context
+            .as_mut()
+            .unwrap()
+            .system_prompt
+            .clear();
+        assert!(patch(&db, json!({"drafts":{"upsert":[invalid]}})).is_err());
+        let mut other = document.drafts[0].clone();
+        other.id = "other-draft".into();
+        assert!(patch(&db, json!({"drafts":{"upsert":[other]}})).is_err());
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&load(&db).unwrap().unwrap()).unwrap(),
+            loaded
+        );
+        let mut user = document.drafts[0].messages[0].clone();
+        user.id = "u2".into();
+        user.context.as_mut().unwrap().mode = crate::optimizer::ModificationMode::Chat;
+        let mut assistant = document.drafts[0].messages[1].clone();
+        assistant.id = "a2".into();
+        document.drafts[0].messages.extend([user, assistant]);
+        let before = db.total_changes();
+        save(&db, &document).unwrap();
+        assert_eq!(
+            db.total_changes() - before,
+            2,
+            "append only writes the two new messages"
+        );
+        patch(&db, json!({"settings":{"theme":"dark","activeProfile":"account","activeDraft":null},"drafts":{"remove":["d"]}})).unwrap();
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM draft_messages", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM draft_dialogues", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn deleting_only_a_reply_preserves_prompt_and_persists_order() {
+        let db = open(Path::new(":memory:")).unwrap();
+        let mut document = fixture();
+        save(&db, &document).unwrap();
+        let mut user = document.drafts[0].messages[0].clone();
+        let mut assistant = document.drafts[0].messages.remove(1);
+        user.id = "next-user".into();
+        assistant.id = "next-assistant".into();
+        document.drafts[0].messages.extend([user, assistant]);
+        save(&db, &document).unwrap();
+        let loaded = parse(&load(&db).unwrap().unwrap()).unwrap();
+        assert_eq!(loaded.drafts[0].messages.len(), 3);
+        assert_eq!(loaded.drafts[0].messages[0].id, "u");
+        assert_eq!(loaded.drafts[0].messages[2].id, "next-assistant");
+        assert_eq!(loaded.drafts[0].result, "优化稿");
+        let target = open(Path::new(":memory:")).unwrap();
+        crate::backup::restore(&target, &crate::backup::export(&db).unwrap()).unwrap();
+        assert_eq!(load(&target).unwrap(), load(&db).unwrap());
+    }
+
     #[test]
     fn incremental_writes_and_invalid_change_rollback() {
         let db = open(Path::new(":memory:")).unwrap();
@@ -877,7 +1118,7 @@ mod relational_tests {
         assert!(!exported.contains("fixture-secret"));
         let mut restored = parse(&exported).unwrap();
         assert_eq!(
-            restored.drafts[0].versions[0].provider_name.as_deref(),
+            restored.drafts[0].messages[1].provider_name.as_deref(),
             Some("测试供应商")
         );
         assert_eq!(
@@ -915,7 +1156,7 @@ mod relational_tests {
         );
     }
     #[test]
-    fn deleting_project_unassigns_draft_and_deleting_draft_removes_versions() {
+    fn deleting_project_unassigns_draft_and_deleting_draft_removes_messages() {
         let db = open(Path::new(":memory:")).unwrap();
         save(&db, &fixture()).unwrap();
         patch(&db, json!({"projects":{"remove":["p"]}})).unwrap();
@@ -924,14 +1165,14 @@ mod relational_tests {
             None
         );
         assert_eq!(
-            db.query_row("SELECT count(*) FROM draft_versions", [], |r| r
+            db.query_row("SELECT count(*) FROM draft_messages", [], |r| r
                 .get::<_, i64>(0))
                 .unwrap(),
-            1
+            2
         );
         patch(&db,json!({"drafts":{"remove":["d"]},"settings":{"theme":"dark","activeDraft":null,"activeProfile":"account"}})).unwrap();
         assert_eq!(
-            db.query_row("SELECT count(*) FROM draft_versions", [], |r| r
+            db.query_row("SELECT count(*) FROM draft_messages", [], |r| r
                 .get::<_, i64>(0))
                 .unwrap(),
             0
@@ -991,6 +1232,28 @@ mod relational_tests {
         )
         .is_err());
         assert_eq!(load(&db).unwrap(), before);
+        for category in ["context", "iteration"] {
+            let mut template = serde_json::to_value(&fixture().templates.unwrap()[0]).unwrap();
+            template["category"] = json!(category);
+            assert!(patch(&db, json!({"templates":{"upsert":[template.clone()]}})).is_err());
+            assert_eq!(load(&db).unwrap(), before);
+            patch(
+                &db,
+                json!({
+                    "templateCategories":{"upsert":[{"id":category,"name":"用户分类"}]},
+                    "templates":{"upsert":[template]}
+                }),
+            )
+            .unwrap();
+            patch(
+                &db,
+                json!({
+                    "templates":{"upsert":fixture().templates.unwrap()},
+                    "templateCategories":{"remove":[category]}
+                }),
+            )
+            .unwrap();
+        }
         patch(
             &db,
             json!({"templates":{"remove":["t"]},"templateCategories":{"remove":["custom"]}}),

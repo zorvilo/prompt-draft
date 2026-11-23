@@ -13,28 +13,56 @@ export interface Project {
   id: string;
   name: string;
 }
-export interface Version {
-  id: string;
-  source: string;
-  result: string;
-  question: string | null;
-  model: string;
-  providerName?: string;
-  created: number;
-  instruction?: string;
-}
 export interface Draft {
   id: string;
   projectId: string | null;
   title: string;
   source: string;
   result: string;
-  question: string | null;
+
   favorite: boolean;
   pinned?: boolean;
   opened: number;
   updated?: number;
-  versions: Version[];
+  messages: ChatMessage[];
+  dialogue?: DialogueState;
+}
+export type ModificationMode = "draft" | "chat";
+export interface OptimizationResult {
+  content: string;
+}
+export interface ConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+  displayContent?: string;
+}
+export interface Conversation {
+  source: string;
+  templateId: string;
+  templateName: string;
+  systemPrompt: string;
+  messages: ConversationMessage[];
+  currentDraft?: string;
+}
+export interface ChatContext {
+  source: string;
+  templateId: string;
+  templateName: string;
+  systemPrompt: string;
+  currentDraft?: string;
+  mode: ModificationMode;
+}
+export interface ChatMessage extends ConversationMessage {
+  durationMs?: number;
+  id: string;
+  created: number;
+  context?: ChatContext;
+  model?: string;
+  providerName?: string;
+}
+export interface DialogueState {
+  mode?: ModificationMode;
+  chatInput?: string;
 }
 export interface Workspace {
   schema: 1;
@@ -181,7 +209,6 @@ export const desktop = {
   windowAction: (action: "hide" | "exit") =>
     invoke<void>("window_action", { action }),
   load: () => invoke<string | null>("load"),
-  save: (document: string) => invoke<void>("save", { document }),
   saveChanges: (changes: WorkspaceChanges) =>
     invoke<void>("save_changes", { changes }),
   hasKey: (profile: Profile) => invoke<boolean>("has_key", { profile }),
@@ -209,27 +236,14 @@ export const desktop = {
     }),
   optimize: (
     profile: Profile,
-    source: string,
     requestId: string,
-    template: OptimizationTemplate,
-    revision: Revision | undefined,
-    templateContent: string,
-    userContent?: string,
-    followup?: Revision,
+    conversation: Conversation,
+    mode: ModificationMode,
     onText?: (text: string) => void,
   ) => {
     const onDelta = new Channel(onText);
-    return invoke<string>("optimize", {
-      input: {
-        profile,
-        source,
-        requestId,
-        template,
-        revision,
-        templateContent,
-        userContent,
-        followup,
-      },
+    return invoke<OptimizationResult>("optimize", {
+      input: { profile, requestId, conversation, mode },
       onDelta,
     }).finally(() => window.dispatchEvent(new Event("usage-updated")));
   },
@@ -241,7 +255,7 @@ export const desktop = {
     invoke<{
       projects: number;
       drafts: number;
-      versions: number;
+      messages: number;
       providers: number;
       usage: number;
       prices: number;

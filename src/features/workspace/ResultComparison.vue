@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import type { Change } from "diff";
+import { computed } from "vue";
+import { diffChars } from "diff";
 
-defineProps<{ source: string; result: string; changes?: Change[] }>();
+const props = defineProps<{ source: string; result: string }>();
+const changes = computed(() =>
+  diffChars(props.source, props.result, { timeout: 150 }),
+);
 </script>
 
 <template>
@@ -11,7 +15,6 @@ defineProps<{ source: string; result: string; changes?: Change[] }>();
     aria-label="优化稿对比"
   >
     <header class="comparison-heading">
-      <div><strong>修订对照</strong><span>修改前后的文字变化</span></div>
       <div class="comparison-legend" aria-label="修订标记说明">
         <span class="comparison-removed">删除</span>
         <span class="comparison-added">新增</span>
@@ -40,51 +43,35 @@ defineProps<{ source: string; result: string; changes?: Change[] }>();
   padding: 20px;
 }
 .comparison-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 0 14px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--line);
-}
-.comparison-heading > div:first-child {
-  display: grid;
-  gap: 3px;
-}
-.comparison-heading strong {
-  font-size: 15px;
-}
-.comparison-heading span {
-  font-size: 12px;
-}
-.comparison-heading > div:first-child span {
-  color: var(--muted);
+  margin-bottom: 12px;
 }
 .comparison-legend {
   display: flex;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 12px;
 }
 .comparison-legend span {
-  padding: 3px 9px;
+  padding: 2px 6px;
   border-radius: 4px;
-  font-weight: 600;
 }
-.comparison-removed {
+.comparison-removed,
+.comparison del {
   color: var(--removed-ink);
-  background: var(--before);
+  background: color-mix(in srgb, var(--before) 60%, var(--paper));
   text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
-.comparison-added {
+.comparison-added,
+.comparison ins {
   color: var(--added-ink);
-  background: var(--after);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  background: color-mix(in srgb, var(--after) 60%, var(--paper));
+  text-decoration: none;
+  font-weight: inherit;
 }
 .comparison {
-  font-size: 16px;
-  line-height: 2.1;
+  font-size: 15px;
+  line-height: 1.85;
 }
 .comparison-fallback {
   display: grid;

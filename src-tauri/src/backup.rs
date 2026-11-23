@@ -6,12 +6,13 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, io::Read};
-const TABLES: [&str; 11] = [
+const TABLES: [&str; 12] = [
     "projects",
     "providers",
     "template_categories",
     "drafts",
-    "draft_versions",
+    "draft_messages",
+    "draft_dialogues",
     "templates",
     "usage_records",
     "model_prices",
@@ -145,6 +146,7 @@ fn replace(db: &Connection, backup: &Backup) -> Result<(), String> {
         }
     }
     crate::storage::validate_state(&tx)?;
+    crate::storage::load(&tx).map_err(|_| "备份中的稿件或聊天数据无效。")?;
     for table in ["pricing_settings", "app_settings"] {
         if backup.tables[table].len() != 1 {
             return Err("备份缺少必要设置。".into());
@@ -208,7 +210,7 @@ pub fn preview(text: &str) -> Result<Value, String> {
         crate::storage::open(std::path::Path::new(":memory:")).map_err(|_| "无法校验备份。")?;
     replace(&staging, &backup)?;
     Ok(
-        json!({"projects":backup.tables["projects"].len(),"drafts":backup.tables["drafts"].len(),"versions":backup.tables["draft_versions"].len(),"providers":backup.tables["providers"].len(),"usage":backup.tables["usage_records"].len(),"prices":backup.tables["model_prices"].len()}),
+        json!({"projects":backup.tables["projects"].len(),"drafts":backup.tables["drafts"].len(),"messages":backup.tables["draft_messages"].len(),"providers":backup.tables["providers"].len(),"usage":backup.tables["usage_records"].len(),"prices":backup.tables["model_prices"].len()}),
     )
 }
 pub fn restore(db: &Connection, text: &str) -> Result<(), String> {
@@ -225,13 +227,18 @@ mod tests {
         crate::storage::save(&db, &workspace).unwrap();
         db.execute("INSERT INTO providers VALUES('account','测试','preset-custom',NULL,'https://example.com','model','fixture-key',NULL,1,2)",[]).unwrap();
         db.execute(
-            "INSERT INTO drafts VALUES('d','p','草稿','原稿','结果',NULL,1,1,1,2)",
+            "INSERT INTO drafts VALUES('d','p','草稿','原稿','结果',1,1,1,2)",
             [],
         )
         .unwrap();
+        let user = json!({"id":"u","role":"user","content":"原稿","created":1,"context":{"mode":"draft","source":"原稿","templateId":"basic","templateName":"基础优化","systemPrompt":"模板"}}).to_string();
+        let assistant =
+            json!({"id":"a","role":"assistant","content":"结果","created":1}).to_string();
+        db.execute("INSERT INTO draft_messages VALUES('u','d',0,?1)", [&user])
+            .unwrap();
         db.execute(
-            "INSERT INTO draft_versions VALUES('v','d','原稿','结果',NULL,NULL,'测试','model',1)",
-            [],
+            "INSERT INTO draft_messages VALUES('a','d',1,?1)",
+            [&assistant],
         )
         .unwrap();
         db.execute(
@@ -260,7 +267,7 @@ mod tests {
             b["tables"]
         );
         broken = a.clone();
-        broken["tables"]["draft_versions"][0]["draft_id"] = json!("missing");
+        broken["tables"]["draft_messages"][0]["draft_id"] = json!("missing");
         assert!(restore(&target, &broken.to_string()).is_err());
         assert_eq!(
             serde_json::from_str::<Value>(&export(&target).unwrap()).unwrap()["tables"],
