@@ -225,9 +225,9 @@ mod tests {
         let db = crate::storage::open(std::path::Path::new(":memory:")).unwrap();
         let workspace=crate::storage::parse(r#"{"schema":1,"projects":[{"id":"p","name":"项目"}],"drafts":[],"profiles":[],"activeProfile":null,"activeDraft":null,"theme":"dark"}"#).unwrap();
         crate::storage::save(&db, &workspace).unwrap();
-        db.execute("INSERT INTO providers VALUES('account','测试','preset-custom',NULL,'https://example.com','model','fixture-key',NULL,1,2)",[]).unwrap();
+        db.execute("INSERT INTO providers VALUES('account','测试','preset-custom',NULL,'https://example.com',0,'model','fixture-key',NULL,1,2)",[]).unwrap();
         db.execute(
-            "INSERT INTO drafts VALUES('d','p','草稿','原稿','结果',1,1,1,2)",
+            "INSERT INTO drafts VALUES('d','p',NULL,NULL,NULL,'草稿','原稿','结果',1,1,1,2)",
             [],
         )
         .unwrap();
@@ -246,7 +246,11 @@ mod tests {
             [],
         )
         .unwrap();
-        db.execute("INSERT INTO templates VALUES('custom-t','custom','模板','说明','system','user','general',1,2)",[]).unwrap();
+        db.execute(
+            "INSERT INTO templates VALUES('custom-t','custom','模板','说明','system','user',1,2)",
+            [],
+        )
+        .unwrap();
         db.execute("INSERT INTO usage_records VALUES(1,1,'account','测试','model','model','optimize','success',100,713,266,512,NULL,'example.com','0.0025','{}')",[]).unwrap();
         db.execute("INSERT INTO model_prices VALUES('example.com','model','override','1','2','0.1','0','manual',1)",[]).unwrap();
         db.execute("INSERT INTO models_dev_cache VALUES(1,'{}',123)", [])

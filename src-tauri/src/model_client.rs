@@ -341,6 +341,7 @@ mod tests {
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let profile = crate::storage::Profile {
+            is_default: false,
             id: "fixture".into(),
             name: "Fixture".into(),
             endpoint: format!("http://{}", listener.local_addr().unwrap()),

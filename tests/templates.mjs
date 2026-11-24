@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { renderTemplate } from "../src/features/library/renderTemplate.ts";
 import {
   templates,
   availableTemplates,
@@ -16,6 +17,12 @@ const workspace = () => ({
   activeProfile: null,
 });
 const fresh = workspace();
+const draftContent = '包含 "引号"、换行\n和 {{待保留变量}}';
+assert.equal(renderTemplate("{{{draftContent}}}", draftContent), draftContent);
+assert.equal(
+  JSON.parse(renderTemplate('{"draftContent": {{#helpers.toJson}}{{{draftContent}}}{{/helpers.toJson}}}', draftContent)).draftContent,
+  draftContent,
+);
 assert.equal(availableTemplates(fresh).length, 3);
 assert.deepEqual(
   builtinCategories.map((item) => item.value),

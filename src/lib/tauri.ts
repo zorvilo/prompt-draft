@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 export interface Profile {
+  isDefault?: boolean;
   id: string;
   name: string;
   endpoint: string;
@@ -14,6 +15,9 @@ export interface Project {
   name: string;
 }
 export interface Draft {
+  templateId?: string | null;
+  providerId?: string | null;
+  model?: string | null;
   id: string;
   projectId: string | null;
   title: string;
@@ -65,6 +69,7 @@ export interface DialogueState {
   chatInput?: string;
 }
 export interface Workspace {
+  defaultTemplateId?: string | null;
   schema: 1;
   uiState?: {
     recentExpanded: boolean;
@@ -88,6 +93,7 @@ export interface Workspace {
 type EntityChanges<T> = { upsert: T[]; remove: string[] };
 export type WorkspaceSettings = Pick<
   Workspace,
+  | "defaultTemplateId"
   | "theme"
   | "closeBehavior"
   | "shortcuts"
@@ -103,21 +109,14 @@ export type WorkspaceChanges = {
   templateCategories?: EntityChanges<Project>;
   settings?: WorkspaceSettings;
 };
-export type OptimizationTemplate =
-  "general" | "outputFormat" | "planning" | "iterate";
 export type TemplateCategory = string;
 export interface PromptTemplate {
   id: string;
-  strategy: OptimizationTemplate;
   category?: TemplateCategory;
   name: string;
   content: string;
   userContent?: string;
   description: string;
-}
-export interface Revision {
-  previousResult: string;
-  instruction: string;
 }
 export type UsageCounts = {
   freshInput: number | null;
@@ -222,17 +221,13 @@ export const desktop = {
     ),
   previewTemplate: (
     source: string,
-    template: OptimizationTemplate,
     templateContent: string,
-    revision?: Revision,
     userContent?: string,
   ) =>
     invoke<{ role: "system" | "user"; content: string }[]>("preview_template", {
       source,
-      template,
       templateContent,
       userContent,
-      revision,
     }),
   optimize: (
     profile: Profile,

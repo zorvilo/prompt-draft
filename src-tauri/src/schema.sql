@@ -2,6 +2,7 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS drafts(
     id TEXT PRIMARY KEY, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    template_id TEXT, provider_id TEXT, model TEXT,
     title TEXT NOT NULL, source TEXT NOT NULL, result TEXT NOT NULL,
     is_pinned INTEGER NOT NULL CHECK(is_pinned IN (0,1)), is_favorite INTEGER NOT NULL CHECK(is_favorite IN (0,1)),
     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
@@ -20,12 +21,13 @@ CREATE TABLE IF NOT EXISTS draft_dialogues(
 CREATE TABLE IF NOT EXISTS template_categories(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS templates(
     id TEXT PRIMARY KEY,category_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL,
-    system_prompt TEXT NOT NULL,user_prompt TEXT,strategy TEXT NOT NULL,
+    system_prompt TEXT NOT NULL,user_prompt TEXT,
     created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS templates_category ON templates(category_id);
 CREATE TABLE IF NOT EXISTS providers(
     id TEXT PRIMARY KEY,name TEXT NOT NULL,preset_id TEXT,website TEXT,endpoint TEXT NOT NULL,
+    is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)),
     default_model TEXT NOT NULL,api_key TEXT NOT NULL DEFAULT '',models_json TEXT,
     created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL
 );

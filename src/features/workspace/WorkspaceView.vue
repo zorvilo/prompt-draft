@@ -2,6 +2,8 @@
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   ArrowLeft,
+  Check,
+  CircleHelp,
   ChevronRight,
   ChevronDown,
   Copy,
@@ -73,6 +75,7 @@ import {
   conversationUsage,
   recordReply,
 } from "./conversation";
+import appIcon from "../../../src-tauri/icons/icon.png";
 import PromptWorkspace from "./PromptWorkspace.vue";
 import { duplicateDraft } from "./duplicateDraft";
 import ResultComparison from "./ResultComparison.vue";
@@ -192,6 +195,18 @@ const hasRequests = computed(() => requests.size > 0);
 const activeRequest = computed(() =>
   draft.value ? requests.get(draft.value.id) : undefined,
 );
+const defaultTemplateId = computed(() =>
+  availableTemplates(data.value).some(
+    (item) => item.id === data.value.defaultTemplateId,
+  )
+    ? data.value.defaultTemplateId!
+    : "prompt-general",
+);
+async function setDefaultTemplate(id: string) {
+  data.value.defaultTemplateId = id;
+  await save();
+  if (!saveError.value) message.success("已设为默认模板");
+}
 const templateList = computed(() => availableTemplates(data.value));
 const draftCategory = ref<TemplateCategory>("basic");
 watch(
@@ -202,7 +217,7 @@ watch(
   },
   { immediate: true },
 );
-const templateId = ref<string>();
+const templateId = computed(() => draft.value?.templateId);
 const draftTemplates = computed(() =>
   templateList.value.filter(
     (item) => (item.category ?? "basic") === draftCategory.value,
@@ -215,36 +230,85 @@ const libraryTemplates = computed(() =>
 );
 const selectedTemplate = computed(
   () =>
-    draftTemplates.value.find((item) => item.id === templateId.value) ??
+    templateList.value.find((item) => item.id === templateId.value) ??
     draftTemplates.value[0],
 );
-const templateOptions = computed(() =>
-  categoryOptions.value
+const focusedTemplateHelp = ref<string | null>(null);
+function templateOption(item: PromptTemplate): DropdownOption {
+  return {
+    key: item.id,
+    label: () =>
+      h("span", { class: "template-option-heading" }, [
+        h(
+          "span",
+          { class: "template-option-check", "aria-hidden": "true" },
+          selectedTemplate.value?.id === item.id
+            ? [h(Check, { size: 14 })]
+            : [],
+        ),
+        h("span", { class: "template-option-name" }, item.name),
+        ...(item.description?.trim()
+          ? [
+              h(
+                NTooltip,
+                {
+                  placement: "top",
+                  delay: 250,
+                  show:
+                    focusedTemplateHelp.value === item.id ? true : undefined,
+                  style: {
+                    width: "360px",
+                    maxWidth: "calc(100vw - 32px)",
+                    boxSizing: "border-box",
+                  },
+                },
+                {
+                  trigger: () =>
+                    h(
+                      "button",
+                      {
+                        type: "button",
+                        class: "template-option-help",
+                        "aria-label": `${item.name}功能说明`,
+                        onClick: (event: MouseEvent) => event.stopPropagation(),
+                        onFocus: () => {
+                          focusedTemplateHelp.value = item.id;
+                        },
+                        onBlur: () => {
+                          focusedTemplateHelp.value = null;
+                        },
+                      },
+                      [h(CircleHelp, { size: 14, "aria-hidden": "true" })],
+                    ),
+                  default: () => item.description,
+                },
+              ),
+            ]
+          : []),
+      ]),
+  };
+}
+const templateOptions = computed<DropdownOption[]>(() => {
+  const groups = categoryOptions.value
     .map((category) => ({
-      label: category.label,
-      key: category.value,
-      children: templateList.value
-        .filter((item) => (item.category ?? "basic") === category.value)
-        .map((item) => ({ label: item.name, key: item.id })),
+      category,
+      items: templateList.value.filter(
+        (item) => (item.category ?? "basic") === category.value,
+      ),
     }))
-    .filter((group) => group.children.length),
-);
+    .filter((group) => group.items.length);
+  return groups.map(({ category, items }) => ({
+    key: category.value,
+    label: category.label,
+    children: items.map(templateOption),
+  }));
+});
 function selectOptimizationTemplate(id: string) {
   const template = templateList.value.find((item) => item.id === id);
   if (!template) return;
   draftCategory.value = template.category ?? "basic";
-  templateId.value = id;
+  if (draft.value) draft.value.templateId = id;
 }
-watch(
-  [() => draft.value?.id, () => draft.value?.dialogue?.mode],
-  () => {
-    const item = draft.value;
-    if (item?.dialogue?.mode !== "chat") return;
-    const templateId = latestContext(item)?.templateId;
-    if (templateId) selectOptimizationTemplate(templateId);
-  },
-  { immediate: true },
-);
 const editingTemplate = ref<PromptTemplate>();
 const viewingBuiltin = computed(
   () => !!editingTemplate.value && isBuiltinTemplate(editingTemplate.value.id),
@@ -262,7 +326,7 @@ const templateFields = [
     id: "template-user-content",
     role: "user",
     label: "用户提示词内容",
-    placeholder: "留空使用默认用户消息。填写 {{{originalPrompt}}} 可插入原稿。",
+    placeholder: "留空使用默认用户消息。填写 {{{draftContent}}} 可插入原稿。",
   },
 ] as const;
 const templatePreviewOpen = ref({ system: false, user: false });
@@ -304,17 +368,14 @@ async function copyTemplateText(role: "system" | "user") {
     message.error(errorMessage(error));
   }
 }
-const iterationInstruction =
-  "对照原稿检查上一版优化稿，补齐遗漏的要求并完善表达。";
 watch(
   [
     () => editingTemplate.value?.content,
-    () => editingTemplate.value?.strategy,
     () => editingTemplate.value?.userContent,
   ],
-  async ([content, strategy, userContent], _, onCleanup) => {
+  async ([content, userContent], _, onCleanup) => {
     templatePreviewError.value = "";
-    if (!content?.trim() || !strategy) {
+    if (!content?.trim()) {
       templatePreview.value = [];
       return;
     }
@@ -325,21 +386,10 @@ watch(
     });
     try {
       const source = "Write a story";
-      const revision =
-        strategy === "iterate"
-          ? {
-              previousResult: "Write a creative story about space exploration",
-              instruction: iterationInstruction,
-            }
-          : undefined;
       const messages = await desktop.previewTemplate(
         source,
-        strategy,
-        renderTemplate(content, source, revision),
-        revision,
-        userContent?.trim()
-          ? renderTemplate(userContent, source, revision)
-          : undefined,
+        renderTemplate(content, source),
+        userContent?.trim() ? renderTemplate(userContent, source) : undefined,
       );
       if (current) templatePreview.value = messages;
     } catch (error) {
@@ -357,7 +407,12 @@ watch(
     showResult.value = false;
   },
 );
-const selectedModel = ref<string | null>(null);
+const selectedModel = computed({
+  get: () => draft.value?.model ?? null,
+  set: (model) => {
+    if (draft.value) draft.value.model = model;
+  },
+});
 const modelOptions = computed(() =>
   (profile.value ? modelsFor(profile.value) : []).map((model) => ({
     label: model,
@@ -365,12 +420,46 @@ const modelOptions = computed(() =>
   })),
 );
 watch(
-  [() => profile.value?.id, () => profile.value?.model],
-  ([, defaultModel]) => {
-    selectedModel.value = defaultModel ?? null;
+  () => [
+    draft.value?.id,
+    draft.value?.providerId,
+    draft.value?.model,
+    draft.value?.templateId,
+    JSON.stringify(data.value.profiles),
+    JSON.stringify(templateList.value),
+  ],
+  () => {
+    const item = draft.value;
+    if (!item) return;
+    if (!templateList.value.some((template) => template.id === item.templateId))
+      item.templateId = defaultTemplateId.value;
+    if (!models.value.some((provider) => provider.id === item.providerId)) {
+      const fallback =
+        models.value.find((provider) => provider.isDefault) ??
+        (models.value.length === 1 ? models.value[0] : undefined);
+      item.providerId = fallback?.id ?? null;
+      item.model = fallback?.model ?? null;
+    }
+    const provider = models.value.find(
+      (provider) => provider.id === item.providerId,
+    );
+    if (provider && !modelsFor(provider).includes(item.model ?? ""))
+      item.model = provider.model;
   },
-  { immediate: true },
+  { immediate: true, flush: "sync" },
 );
+function selectProvider(id: string) {
+  if (!draft.value) return;
+  draft.value.providerId = id;
+  draft.value.model =
+    models.value.find((item) => item.id === id)?.model ?? null;
+}
+async function setDefaultProfile(id: string) {
+  for (const item of data.value.profiles) item.isDefault = item.id === id;
+  await save();
+  if (saveError.value) message.error(saveError.value);
+  else message.success("已设为默认供应商");
+}
 const contextUsage = computed(() => {
   const item = draft.value;
   const template = selectedTemplate.value;
@@ -459,7 +548,16 @@ function deleteTemplateCategory(category: { value: string; label: string }) {
       const previous = {
         templates: data.value.templates,
         categories: data.value.templateCategories,
+        defaultTemplateId: data.value.defaultTemplateId,
       };
+      if (
+        templateList.value.some(
+          (item) =>
+            item.id === data.value.defaultTemplateId &&
+            (item.category ?? "basic") === category.value,
+        )
+      )
+        data.value.defaultTemplateId = "prompt-general";
       data.value.templates = (data.value.templates ?? []).filter(
         (item) => (item.category ?? "basic") !== category.value,
       );
@@ -470,6 +568,7 @@ function deleteTemplateCategory(category: { value: string; label: string }) {
       if (saveError.value) {
         data.value.templates = previous.templates;
         data.value.templateCategories = previous.categories;
+        data.value.defaultTemplateId = previous.defaultTemplateId;
         throw new Error(saveError.value);
       }
       message.success("分类及其中的模板已删除");
@@ -481,7 +580,6 @@ function deleteTemplateCategory(category: { value: string; label: string }) {
 function newTemplate() {
   editingTemplate.value = {
     id: crypto.randomUUID(),
-    strategy: "general",
     category: libraryCategory.value,
     name: "",
     content: "",
@@ -533,6 +631,8 @@ function deleteTemplate(item: PromptTemplate) {
     "删除模板",
     "确定删除「" + item.name + "」？",
     async () => {
+      if (data.value.defaultTemplateId === item.id)
+        data.value.defaultTemplateId = "prompt-general";
       data.value.templates = (data.value.templates ?? []).filter(
         (entry) => entry.id !== item.id,
       );
@@ -544,6 +644,7 @@ function deleteTemplate(item: PromptTemplate) {
 }
 
 async function saveProfile(profile: Profile) {
+  if (!data.value.profiles.length) profile = { ...profile, isDefault: true };
   const index = data.value.profiles.findIndex((item) => item.id === profile.id);
   if (index === -1) data.value.profiles.push(profile);
   else data.value.profiles[index] = profile;
@@ -1698,6 +1799,17 @@ onUnmounted(() => {
                     <div class="template-actions">
                       <n-button
                         size="small"
+                        :disabled="defaultTemplateId === item.id"
+                        :aria-label="'将 ' + item.name + ' 设为默认模板'"
+                        @click="setDefaultTemplate(item.id)"
+                        >{{
+                          defaultTemplateId === item.id
+                            ? "默认模板"
+                            : "设为默认"
+                        }}</n-button
+                      >
+                      <n-button
+                        size="small"
                         :aria-label="
                           (isBuiltinTemplate(item.id) ? '查看 ' : '编辑 ') +
                           item.name
@@ -1756,20 +1868,19 @@ onUnmounted(() => {
               @restore="restore"
               @saved="saveProfile"
               @remove="removeProfile"
+              @default="setDefaultProfile"
               @theme="(value) => (data.theme = value)"
             />
           </div>
         </section>
         <div v-else-if="!draft" class="welcome">
           <div class="welcome-copy">
-            <div class="welcome-mark">
-              <FileText :size="35" aria-hidden="true" />
-            </div>
-            <h1>开启一份草稿</h1>
-            <p>从一句真实的需求开始，把它整理成可直接交给 AI 的提示词。</p>
-            <n-button type="primary" @click="create()"
-              ><template #icon><Plus /></template>新建草稿</n-button
-            >
+            <img class="welcome-logo" :src="appIcon" alt="词稿" />
+            <h1>你想优化什么提示词？</h1>
+            <p>新建一份草稿，写下需求或粘贴已有提示词。</p>
+            <n-button type="primary" @click="create()">
+              <template #icon><Plus aria-hidden="true" /></template>新建草稿
+            </n-button>
           </div>
         </div>
         <template v-else>
@@ -1840,7 +1951,13 @@ onUnmounted(() => {
               >
                 <n-button
                   class="template-menu-trigger"
-                  aria-label="优化模板"
+                  :aria-label="
+                    '优化模板：' +
+                    (selectedTemplate?.name ?? '未选择') +
+                    (selectedTemplate?.description
+                      ? '，' + selectedTemplate.description
+                      : '')
+                  "
                   aria-haspopup="menu"
                   :disabled="!templateOptions.length"
                 >
@@ -1896,7 +2013,7 @@ onUnmounted(() => {
                   }))
                 "
                 :disabled="!models.length"
-                @update:value="(id) => (data.activeProfile = id)"
+                @update:value="selectProvider"
               />
               <n-select
                 class="workbench-model"

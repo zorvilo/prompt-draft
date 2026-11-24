@@ -70,6 +70,7 @@ const props = defineProps<{
   ) => Promise<boolean>;
 }>();
 const emit = defineEmits<{
+  default: [id: string];
   backup: [];
   restore: [];
   saved: [profile: Profile];
@@ -335,6 +336,17 @@ async function run(action: "test" | "save" | "clear") {
                 ><small>{{ item.model || "OpenAI 兼容接口" }}</small></span
               >
               <div class="provider-record-actions">
+                <n-button
+                  size="small"
+                  :disabled="item.isDefault || configured.length === 1"
+                  @click="emit('default', item.id)"
+                >
+                  {{
+                    item.isDefault || configured.length === 1
+                      ? "默认供应商"
+                      : "设为默认"
+                  }}
+                </n-button>
                 <n-button
                   size="small"
                   :disabled="!!testingProvider"

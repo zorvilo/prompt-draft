@@ -113,18 +113,10 @@ pub async fn fetch_models(
 #[tauri::command]
 pub fn preview_template(
     source: String,
-    template: optimizer::OptimizationTemplate,
-    revision: Option<optimizer::Revision>,
     template_content: String,
     user_content: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    optimizer::messages(
-        &source,
-        template,
-        revision.as_ref(),
-        &template_content,
-        user_content.as_deref(),
-    )
+    optimizer::messages(&source, &template_content, user_content.as_deref())
 }
 
 #[derive(serde::Deserialize)]

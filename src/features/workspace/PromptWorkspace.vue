@@ -16,6 +16,7 @@ import {
 import {
   ArrowUp,
   Columns2,
+  CircleHelp,
   Copy,
   Download,
   Eye,
@@ -61,6 +62,7 @@ const emit = defineEmits<{
   expand: [];
   cancel: [];
 }>();
+const focusedMode = ref<ModificationMode | null>(null);
 const mode = computed(() => draft.value.dialogue?.mode ?? "draft");
 const output = computed(() => draft.value.result);
 const messages = computed(() => draft.value.messages);
@@ -272,20 +274,60 @@ async function selectMode(value: ModificationMode) {
         <slot name="heading" />
       </div>
       <n-button-group aria-label="提示词修改方式">
-        <n-button
-          :type="mode === 'draft' ? 'primary' : 'default'"
-          :aria-pressed="mode === 'draft'"
-          @click="selectMode('draft')"
-          ><template #icon><Columns2 aria-hidden="true" /></template
-          >模板优化</n-button
+        <div
+          v-for="item in [
+            {
+              value: 'draft' as const,
+              label: '模板优化',
+              description:
+                '已经写好提示词，想让 AI 帮你改得更好？选这个。把内容填在左侧，选择模板后生成，右侧就能看到修改后的提示词。',
+              icon: Columns2,
+            },
+            {
+              value: 'chat' as const,
+              label: '连续对话',
+              description:
+                '想边聊边改提示词？选这个。直接告诉 AI 你想改哪里，比如“再简短一点”或“加一个例子”，它会接着上面的内容修改。还没写好提示词，也可以先说说你想做什么。',
+              icon: MessagesSquare,
+            },
+          ]"
+          :key="item.value"
+          class="mode-option"
         >
-        <n-button
-          :type="mode === 'chat' ? 'primary' : 'default'"
-          :aria-pressed="mode === 'chat'"
-          @click="selectMode('chat')"
-          ><template #icon><MessagesSquare aria-hidden="true" /></template
-          >连续对话</n-button
-        >
+          <n-button
+            :type="mode === item.value ? 'primary' : 'default'"
+            :aria-pressed="mode === item.value"
+            @click="selectMode(item.value)"
+          >
+            <template #icon
+              ><component :is="item.icon" aria-hidden="true"
+            /></template>
+            {{ item.label }}
+          </n-button>
+          <n-tooltip
+            :delay="250"
+            placement="top"
+            :show="focusedMode === item.value ? true : undefined"
+            :style="{
+              width: '360px',
+              maxWidth: 'calc(100vw - 32px)',
+              boxSizing: 'border-box',
+            }"
+          >
+            <template #trigger>
+              <button
+                type="button"
+                class="mode-help"
+                :aria-label="`${item.label}功能说明`"
+                @focus="focusedMode = item.value"
+                @blur="focusedMode = null"
+              >
+                <CircleHelp :size="14" aria-hidden="true" />
+              </button>
+            </template>
+            {{ item.description }}
+          </n-tooltip>
+        </div>
       </n-button-group>
     </div>
 
@@ -359,9 +401,23 @@ async function selectMode(value: ModificationMode) {
             ></n-button>
           </div>
         </div>
-        <div v-if="request" class="modification-output" role="status">
-          <n-spin v-if="!request.text" :size="18" />
-          <pre>{{ request.text || "正在生成修改结果…" }}</pre>
+        <div
+          v-if="request && !request.text"
+          class="optimization-waiting"
+          role="status"
+          aria-live="polite"
+        >
+          <n-spin :size="22" />
+          <strong>正在优化提示词</strong>
+          <span>等待模型回复，内容将在这里逐步显示</span>
+        </div>
+        <div
+          v-else-if="request"
+          class="modification-output"
+          aria-label="正在生成的优化稿"
+          :aria-busy="true"
+        >
+          <pre>{{ request.text }}</pre>
         </div>
         <result-comparison
           v-else-if="output && display === 'compare'"
@@ -643,15 +699,23 @@ async function selectMode(value: ModificationMode) {
         </n-tooltip>
         <n-button
           v-if="request"
-          circle
-          :class="{ 'chat-send-button': mode === 'chat' }"
+          :circle="mode === 'chat'"
+          :class="{
+            'chat-send-button': mode === 'chat',
+            'optimization-action': mode === 'draft',
+          }"
+          type="primary"
           aria-label="停止生成"
           @click="emit('cancel')"
-          ><template #icon><Square aria-hidden="true" /></template></n-button
+          ><template #icon><Square :size="18" aria-hidden="true" /></template
+          ><span v-if="mode === 'draft'">停止生成</span></n-button
         ><n-button
           v-else
           :circle="mode === 'chat'"
-          :class="{ 'chat-send-button': mode === 'chat' }"
+          :class="{
+            'chat-send-button': mode === 'chat',
+            'optimization-action': mode === 'draft',
+          }"
           type="primary"
           :disabled="!canSend"
           :aria-label="

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { prepareConversation, currentResultReply, conversationUsage, recordReply, changeMode, latestContext } from "../src/features/workspace/conversation.ts";
 import { duplicateDraft } from "../src/features/workspace/duplicateDraft.ts";
-const template = { id: "basic", name: "基础优化", content: "保留原意", userContent: "需求：{{{originalPrompt}}}", strategy: "general" };
+const template = { id: "basic", name: "基础优化", content: "保留原意", userContent: "需求：{{{draftContent}}}" };
 const draft = { id: "d", title: "稿", source: "面向新手", result: "", messages: [], favorite: false };
 const reply = (conversation, content, mode) => recordReply(draft, conversation, { content }, mode, "model", "供应商", 1234);
 const first = prepareConversation(draft, template, undefined, "draft");

@@ -18,6 +18,7 @@ function changed<T extends { id: string }>(before: T[], after: T[]) {
 }
 function settings(value: Workspace): WorkspaceSettings {
   const {
+    defaultTemplateId,
     theme,
     closeBehavior,
     shortcuts,
@@ -26,6 +27,7 @@ function settings(value: Workspace): WorkspaceSettings {
     uiState,
   } = value;
   return {
+    defaultTemplateId,
     theme,
     closeBehavior,
     shortcuts,

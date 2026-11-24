@@ -26,7 +26,7 @@ export function useWorkspace() {
   );
   const models = computed(() => configuredModels(data.value.profiles));
   const profile = computed(() =>
-    models.value.find((item) => item.id === data.value.activeProfile),
+    models.value.find((item) => item.id === draft.value?.providerId),
   );
   let timer: ReturnType<typeof setTimeout>;
   let write = Promise.resolve();
@@ -66,6 +66,7 @@ export function useWorkspace() {
       projectId,
       title,
       source,
+      templateId: data.value.defaultTemplateId ?? "prompt-general",
       result: "",
 
       favorite: false,

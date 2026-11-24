@@ -1,14 +1,9 @@
 import Mustache from "mustache";
-import type { Revision } from "../../lib/tauri";
 
-export function renderTemplate(
-  content: string,
-  originalPrompt: string,
-  revision?: Revision,
-) {
+export function renderTemplate(content: string, draftContent: string) {
   // Plain templates can contain variables intended for the model's output.
   if (
-    !/\{\{\s*(?:=|[{#^&]?\s*(?:originalPrompt|previousResult|lastOptimizedPrompt|iterateInput|helpers\.toJson)\s*\}\})/.test(
+    !/\{\{\s*(?:=|[{#^&]?\s*(?:draftContent|helpers\.toJson)\s*\}\})/.test(
       content,
     )
   ) {
@@ -17,10 +12,7 @@ export function renderTemplate(
 
   try {
     return Mustache.render(content, {
-      originalPrompt,
-      previousResult: revision?.previousResult,
-      lastOptimizedPrompt: revision?.previousResult,
-      iterateInput: revision?.instruction,
+      draftContent,
       helpers: {
         toJson: () => (text: string, render: (text: string) => string) =>
           JSON.stringify(render(text)),

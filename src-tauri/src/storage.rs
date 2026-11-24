@@ -44,6 +44,12 @@ pub struct ChatMessage {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Draft {
+    #[serde(default)]
+    template_id: Option<String>,
+    #[serde(default)]
+    provider_id: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
     id: String,
     project_id: Option<String>,
     title: String,
@@ -126,6 +132,8 @@ fn validate_dialogue(draft: &Draft) -> Result<(), String> {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
+    #[serde(default)]
+    pub is_default: bool,
     pub id: String,
     pub name: String,
     pub endpoint: String,
@@ -141,6 +149,8 @@ pub struct Profile {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
+    #[serde(default)]
+    default_template_id: Option<String>,
     schema: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     templates: Option<Vec<crate::optimizer::PromptTemplate>>,
@@ -384,6 +394,8 @@ pub fn parse(input: &str) -> Result<Workspace, String> {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default)]
+    default_template_id: Option<String>,
     theme: String,
     close_behavior: Option<CloseBehavior>,
     shortcuts: Option<Shortcuts>,
@@ -449,7 +461,7 @@ pub fn load(connection: &Connection) -> rusqlite::Result<Option<String>> {
     };
     let preferences: serde_json::Value = decode(preferences)?;
     let ui: serde_json::Value = decode(ui)?;
-    let mut drafts:Vec<Draft>=json_rows(connection,"SELECT json_object('id',id,'projectId',project_id,'title',title,'source',source,'result',result,'favorite',json(CASE WHEN is_favorite THEN 'true' ELSE 'false' END),'pinned',json(CASE WHEN is_pinned THEN 'true' ELSE 'false' END),'opened',created_at,'updated',updated_at,'messages',json('[]')) FROM drafts ORDER BY created_at,rowid")?;
+    let mut drafts:Vec<Draft>=json_rows(connection,"SELECT json_object('id',id,'templateId',template_id,'providerId',provider_id,'model',model,'projectId',project_id,'title',title,'source',source,'result',result,'favorite',json(CASE WHEN is_favorite THEN 'true' ELSE 'false' END),'pinned',json(CASE WHEN is_pinned THEN 'true' ELSE 'false' END),'opened',created_at,'updated',updated_at,'messages',json('[]')) FROM drafts ORDER BY created_at,rowid")?;
     let mut messages: HashMap<String, Vec<ChatMessage>> = HashMap::new();
     for row in connection
         .prepare(
@@ -483,11 +495,12 @@ pub fn load(connection: &Connection) -> rusqlite::Result<Option<String>> {
         validate_dialogue(draft).map_err(|_| rusqlite::Error::InvalidQuery)?;
     }
     let workspace=Workspace {
+        default_template_id:preferences["defaultTemplateId"].as_str().map(String::from),
         schema:1,
         projects:json_rows(connection,"SELECT json_object('id',id,'name',name) FROM projects ORDER BY created_at,rowid")?,
         drafts,
-        profiles:json_rows(connection,"SELECT json_object('id',id,'name',name,'endpoint',endpoint,'presetId',preset_id,'website',website,'model',default_model,'catalog',json(models_json)) FROM providers ORDER BY created_at,rowid")?,
-        templates:Some(json_rows(connection,"SELECT json_object('id',id,'category',category_id,'strategy',strategy,'name',name,'content',system_prompt,'userContent',user_prompt,'description',description) FROM templates ORDER BY created_at,rowid")?),
+        profiles:json_rows(connection,"SELECT json_object('id',id,'name',name,'endpoint',endpoint,'presetId',preset_id,'website',website,'isDefault',json(CASE WHEN is_default THEN 'true' ELSE 'false' END),'model',default_model,'catalog',json(models_json)) FROM providers ORDER BY created_at,rowid")?,
+        templates:Some(json_rows(connection,"SELECT json_object('id',id,'category',category_id,'name',name,'content',system_prompt,'userContent',user_prompt,'description',description) FROM templates ORDER BY created_at,rowid")?),
         template_categories:Some(json_rows(connection,"SELECT json_object('id',id,'name',name) FROM template_categories ORDER BY created_at,rowid")?),
         theme:preferences["theme"].as_str().unwrap_or("system").into(),
         close_behavior:serde_json::from_value(preferences["closeBehavior"].clone()).map_err(|_|rusqlite::Error::InvalidQuery)?,
@@ -505,20 +518,26 @@ fn upsert_project(db: &Connection, table: &str, item: &Project) -> rusqlite::Res
     Ok(())
 }
 fn upsert_provider(db: &Connection, item: &Profile) -> rusqlite::Result<()> {
+    if item.is_default {
+        db.execute(
+            "UPDATE providers SET is_default=0 WHERE id<>?1 AND is_default=1",
+            [&item.id],
+        )?;
+    }
     let models = item
         .catalog
         .as_ref()
         .map(|v| serde_json::to_string(v).unwrap());
-    db.execute("INSERT INTO providers(id,name,preset_id,website,endpoint,default_model,models_json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8)
-        ON CONFLICT(id) DO UPDATE SET name=excluded.name,preset_id=excluded.preset_id,website=excluded.website,endpoint=excluded.endpoint,default_model=excluded.default_model,models_json=excluded.models_json,
+    db.execute("INSERT INTO providers(id,name,preset_id,website,endpoint,default_model,models_json,created_at,updated_at,is_default) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8,?9)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name,preset_id=excluded.preset_id,website=excluded.website,endpoint=excluded.endpoint,default_model=excluded.default_model,models_json=excluded.models_json,is_default=excluded.is_default,
         api_key=CASE WHEN providers.endpoint=excluded.endpoint THEN providers.api_key ELSE '' END,updated_at=excluded.updated_at
-        WHERE (name,preset_id,website,endpoint,default_model,models_json) IS NOT (excluded.name,excluded.preset_id,excluded.website,excluded.endpoint,excluded.default_model,excluded.models_json)",params![item.id,item.name,item.preset_id,item.website,item.endpoint,item.model,models,now()])?;
+        WHERE (name,preset_id,website,endpoint,default_model,models_json,is_default) IS NOT (excluded.name,excluded.preset_id,excluded.website,excluded.endpoint,excluded.default_model,excluded.models_json,excluded.is_default)",params![item.id,item.name,item.preset_id,item.website,item.endpoint,item.model,models,now(),item.is_default])?;
     Ok(())
 }
 fn upsert_draft(db: &Connection, item: &Draft) -> rusqlite::Result<()> {
     validate_dialogue(item).map_err(|_| rusqlite::Error::InvalidQuery)?;
-    db.execute("INSERT INTO drafts(id,project_id,title,source,result,is_pinned,is_favorite,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,title=excluded.title,source=excluded.source,result=excluded.result,is_pinned=excluded.is_pinned,is_favorite=excluded.is_favorite,updated_at=excluded.updated_at
-        WHERE (project_id,title,source,result,is_pinned,is_favorite,updated_at) IS NOT (excluded.project_id,excluded.title,excluded.source,excluded.result,excluded.is_pinned,excluded.is_favorite,excluded.updated_at)",params![item.id,item.project_id,item.title,item.source,item.result,item.pinned,item.favorite,item.opened,item.updated.unwrap_or(item.opened)])?;
+    db.execute("INSERT INTO drafts(id,project_id,title,source,result,is_pinned,is_favorite,created_at,updated_at,template_id,provider_id,model) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO UPDATE SET template_id=excluded.template_id,provider_id=excluded.provider_id,model=excluded.model,project_id=excluded.project_id,title=excluded.title,source=excluded.source,result=excluded.result,is_pinned=excluded.is_pinned,is_favorite=excluded.is_favorite,updated_at=excluded.updated_at
+        WHERE (template_id,provider_id,model,project_id,title,source,result,is_pinned,is_favorite,updated_at) IS NOT (excluded.template_id,excluded.provider_id,excluded.model,excluded.project_id,excluded.title,excluded.source,excluded.result,excluded.is_pinned,excluded.is_favorite,excluded.updated_at)",params![item.id,item.project_id,item.title,item.source,item.result,item.pinned,item.favorite,item.opened,item.updated.unwrap_or(item.opened),item.template_id,item.provider_id,item.model])?;
     if let Some(dialogue) = &item.dialogue {
         let state = serde_json::to_string(dialogue).map_err(|_| rusqlite::Error::InvalidQuery)?;
         db.execute("INSERT INTO draft_dialogues VALUES(?1,?2) ON CONFLICT(draft_id) DO UPDATE SET state_json=excluded.state_json WHERE state_json IS NOT excluded.state_json", params![item.id, state])?;
@@ -545,8 +564,8 @@ fn upsert_template(
     db: &Connection,
     item: &crate::optimizer::PromptTemplate,
 ) -> rusqlite::Result<()> {
-    db.execute("INSERT INTO templates VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?8) ON CONFLICT(id) DO UPDATE SET category_id=excluded.category_id,name=excluded.name,description=excluded.description,system_prompt=excluded.system_prompt,user_prompt=excluded.user_prompt,strategy=excluded.strategy,updated_at=excluded.updated_at
-        WHERE (category_id,name,description,system_prompt,user_prompt,strategy) IS NOT (excluded.category_id,excluded.name,excluded.description,excluded.system_prompt,excluded.user_prompt,excluded.strategy)",params![item.id,item.category.as_deref().unwrap_or("basic"),item.name,item.description,item.content,item.user_content,serde_json::to_value(&item.strategy).unwrap().as_str().unwrap(),now()])?;
+    db.execute("INSERT INTO templates VALUES(?1,?2,?3,?4,?5,?6,?7,?7) ON CONFLICT(id) DO UPDATE SET category_id=excluded.category_id,name=excluded.name,description=excluded.description,system_prompt=excluded.system_prompt,user_prompt=excluded.user_prompt,updated_at=excluded.updated_at
+        WHERE (category_id,name,description,system_prompt,user_prompt) IS NOT (excluded.category_id,excluded.name,excluded.description,excluded.system_prompt,excluded.user_prompt)",params![item.id,item.category.as_deref().unwrap_or("basic"),item.name,item.description,item.content,item.user_content,now()])?;
     Ok(())
 }
 fn persist(db: &Connection, changes: &WorkspaceChanges) -> rusqlite::Result<()> {
@@ -592,7 +611,7 @@ fn persist(db: &Connection, changes: &WorkspaceChanges) -> rusqlite::Result<()> 
         }
     }
     if let Some(settings) = &changes.settings {
-        let preferences=serde_json::json!({"theme":settings.theme,"closeBehavior":settings.close_behavior,"shortcuts":settings.shortcuts}).to_string();
+        let preferences=serde_json::json!({"defaultTemplateId":settings.default_template_id,"theme":settings.theme,"closeBehavior":settings.close_behavior,"shortcuts":settings.shortcuts}).to_string();
         let ui=serde_json::json!({"activeDraft":settings.active_draft,"activeProfile":settings.active_profile,"uiState":settings.ui_state}).to_string();
         db.execute("INSERT INTO app_settings VALUES(1,?1,?2) ON CONFLICT(id) DO UPDATE SET preferences_json=excluded.preferences_json,ui_state_json=excluded.ui_state_json WHERE (preferences_json,ui_state_json) IS NOT (excluded.preferences_json,excluded.ui_state_json)",params![preferences,ui])?;
     }
@@ -759,6 +778,7 @@ pub fn save(db: &Connection, document: &Workspace) -> Result<(), String> {
                 |v| &v.id,
             )?),
             settings: Some(Settings {
+                default_template_id: document.default_template_id.clone(),
                 theme: document.theme.clone(),
                 close_behavior: document.close_behavior.clone(),
                 shortcuts: document.shortcuts.clone(),
@@ -782,6 +802,7 @@ mod tests {
     fn keys_are_bound_to_the_provider_and_excluded_from_workspace_backups() {
         let connection = open(Path::new(":memory:")).unwrap();
         let mut profile = Profile {
+            is_default: false,
             id: "account".into(),
             name: "测试".into(),
             endpoint: "https://provider.example/v1".into(),
@@ -848,6 +869,9 @@ mod tests {
             vec![
                 "id",
                 "project_id",
+                "template_id",
+                "provider_id",
+                "model",
                 "title",
                 "source",
                 "result",
@@ -950,7 +974,7 @@ mod tests {
 
     #[test]
     fn custom_template_categories_survive_save_and_restore() {
-        let input = r#"{"schema":1,"projects":[{"id":"p","name":"测试"}],"drafts":[],"profiles":[],"activeProfile":null,"activeDraft":null,"theme":"system","templateCategories":[{"id":"custom","name":"写作"}],"templates":[{"id":"t","category":"custom","strategy":"general","name":"测试","content":"改写","description":""}]}"#;
+        let input = r#"{"schema":1,"projects":[{"id":"p","name":"测试"}],"drafts":[],"profiles":[],"activeProfile":null,"activeDraft":null,"theme":"system","templateCategories":[{"id":"custom","name":"写作"}],"templates":[{"id":"t","category":"custom","name":"测试","content":"改写","description":""}]}"#;
         let mut workspace = parse(input).unwrap();
         workspace
             .template_categories
@@ -1009,7 +1033,7 @@ mod relational_tests {
     use super::*;
     use serde_json::json;
     fn fixture() -> Workspace {
-        parse(&json!({"schema":1,"projects":[{"id":"p","name":"项目"},{"id":"other","name":"其他"}],"drafts":[{"id":"d","projectId":"p","title":"草稿","source":"原稿","result":"优化稿","favorite":false,"pinned":true,"opened":100,"updated":200,"messages":[{"id":"u","role":"user","content":"原稿","created":150,"context":{"mode":"draft","source":"原稿","templateId":"basic","templateName":"基础优化","systemPrompt":"保持原意","currentDraft":"优化稿"}},{"id":"a","role":"assistant","content":"优化稿","created":150,"durationMs":1234,"model":"deepseek-flash","providerName":"测试供应商"}]}],"profiles":[{"id":"account","name":"测试供应商","presetId":"preset-custom","website":"https://example.com","endpoint":"https://example.com/v1","model":"deepseek-flash","catalog":["deepseek-flash"]}],"activeProfile":"account","activeDraft":"d","theme":"dark","closeBehavior":"hide","shortcuts":{"newDraft":"Ctrl+KeyN","optimize":"Ctrl+Enter"},"uiState":{"recentExpanded":false,"pinnedExpanded":true,"expandedProjects":["p"],"draftListMode":"recent"},"templateCategories":[{"id":"custom","name":"用户分类"}],"templates":[{"id":"t","category":"custom","strategy":"general","name":"用户模板","content":"系统提示词","userContent":"用户提示词","description":"说明"}]}).to_string()).unwrap()
+        parse(&json!({"schema":1,"projects":[{"id":"p","name":"项目"},{"id":"other","name":"其他"}],"drafts":[{"id":"d","projectId":"p","title":"草稿","source":"原稿","result":"优化稿","favorite":false,"pinned":true,"opened":100,"updated":200,"messages":[{"id":"u","role":"user","content":"原稿","created":150,"context":{"mode":"draft","source":"原稿","templateId":"basic","templateName":"基础优化","systemPrompt":"保持原意","currentDraft":"优化稿"}},{"id":"a","role":"assistant","content":"优化稿","created":150,"durationMs":1234,"model":"deepseek-flash","providerName":"测试供应商"}]}],"profiles":[{"id":"account","name":"测试供应商","presetId":"preset-custom","website":"https://example.com","endpoint":"https://example.com/v1","model":"deepseek-flash","catalog":["deepseek-flash"]}],"activeProfile":"account","activeDraft":"d","theme":"dark","closeBehavior":"hide","shortcuts":{"newDraft":"Ctrl+KeyN","optimize":"Ctrl+Enter"},"uiState":{"recentExpanded":false,"pinnedExpanded":true,"expandedProjects":["p"],"draftListMode":"recent"},"templateCategories":[{"id":"custom","name":"用户分类"}],"templates":[{"id":"t","category":"custom","name":"用户模板","content":"系统提示词","userContent":"用户提示词","description":"说明"}]}).to_string()).unwrap()
     }
     fn patch(db: &Connection, value: serde_json::Value) -> Result<(), String> {
         apply_changes(
@@ -1021,11 +1045,21 @@ mod relational_tests {
     fn messages_roundtrip_incremental_backup_validation_and_cascade() {
         let db = open(Path::new(":memory:")).unwrap();
         let mut document = fixture();
+        document.drafts[0].template_id = Some("basic".into());
+        document.drafts[0].provider_id = Some("account".into());
+        document.drafts[0].model = Some("custom-model".into());
+        document.profiles[0].is_default = true;
+        document.default_template_id = Some("prompt-general".into());
         let state = json!({"mode":"chat","chatInput":"下一条消息"});
         document.drafts[0].dialogue = Some(serde_json::from_value(state.clone()).unwrap());
         save(&db, &document).unwrap();
         let loaded: serde_json::Value = serde_json::from_str(&load(&db).unwrap().unwrap()).unwrap();
         assert_eq!(loaded["drafts"][0]["dialogue"], state);
+        assert_eq!(loaded["drafts"][0]["templateId"], "basic");
+        assert_eq!(loaded["drafts"][0]["providerId"], "account");
+        assert_eq!(loaded["drafts"][0]["model"], "custom-model");
+        assert_eq!(loaded["profiles"][0]["isDefault"], true);
+        assert_eq!(loaded["defaultTemplateId"], "prompt-general");
         assert_eq!(
             loaded["drafts"][0]["messages"],
             json!(document.drafts[0].messages)

@@ -29,7 +29,7 @@ node tests/workspace-changes.mjs
 node tests/hover-scroll-text.mjs
 ```
 
-运行 `npm run tauri build` 生成 NSIS 安装包。产品与技术设计见 [docs/design.md](docs/design.md)。编码规范见 [AGENTS.md](AGENTS.md)。
+运行 `npm run tauri build` 生成 NSIS 安装包。开发规范、交互约定与模块职责见 [AGENTS.md](AGENTS.md)。
 
 ## 许可证
 

@@ -86,7 +86,7 @@ export function prepareConversation(
       if (existing && existing.currentDraft !== draft.result)
         updates.currentDraft = draft.result;
       if (existing && existing.source !== draft.source)
-        updates.originalPrompt = draft.source;
+        updates.draftContent = draft.source;
       conversation.messages.push({
         role: "user",
         displayContent: instruction,
