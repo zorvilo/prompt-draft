@@ -60,6 +60,12 @@ pub enum ModificationMode {
 #[serde(deny_unknown_fields)]
 #[derive(Debug)]
 pub struct OptimizationResult {
+    #[serde(
+        default,
+        rename = "inputTokens",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub input_tokens: Option<i64>,
     pub content: String,
 }
 
@@ -68,6 +74,7 @@ pub fn parse_reply(text: &str) -> Result<OptimizationResult, String> {
         return Err("模型返回内容为空或超过 60,000 字，请重试。".into());
     }
     Ok(OptimizationResult {
+        input_tokens: None,
         content: text.to_owned(),
     })
 }
@@ -91,10 +98,9 @@ pub fn validate_conversation(conversation: &Conversation, complete: bool) -> Res
     {
         return Err("对话的原始需求或模板内容无效。".into());
     }
-    if count == 0 || count > 100 || count.is_multiple_of(2) != complete {
+    if count == 0 || count.is_multiple_of(2) != complete {
         return Err("对话记录顺序无效或轮数过多，请重新优化开启新一轮。".into());
     }
-    let mut total = conversation.system_prompt.chars().count();
     for (index, message) in conversation.messages.iter().enumerate() {
         let expected = if index % 2 == 0 {
             ConversationRole::User
@@ -112,10 +118,6 @@ pub fn validate_conversation(conversation: &Conversation, complete: bool) -> Res
         {
             return Err("对话消息内容或角色顺序无效。".into());
         }
-        total += length;
-    }
-    if total > if complete { 240_000 } else { 120_000 } {
-        return Err("对话上下文过长，请重新优化开启新一轮；历史消息未被自动截断。".into());
     }
     Ok(())
 }
@@ -232,6 +234,23 @@ mod tests {
     }
 
     #[test]
+    fn long_context_has_no_application_total_or_round_limit() {
+        let mut conversation = sample_conversation();
+        conversation.messages = (0..111)
+            .map(|index| super::ConversationMessage {
+                role: if index % 2 == 0 {
+                    super::ConversationRole::User
+                } else {
+                    super::ConversationRole::Assistant
+                },
+                content: "正文".repeat(2000),
+                display_content: None,
+            })
+            .collect();
+        assert!(conversation_messages(&conversation, ModificationMode::Chat).is_ok());
+    }
+
+    #[test]
     fn conversation_rejects_invalid_roles_order_and_length() {
         let mut conversation = sample_conversation();
         conversation.messages[0].role = super::ConversationRole::Assistant;
@@ -239,7 +258,7 @@ mod tests {
             super::conversation_messages(&conversation, super::ModificationMode::Draft).is_err()
         );
         let mut conversation = sample_conversation();
-        conversation.messages[0].content = "长".repeat(120_000);
+        conversation.messages[0].content = "长".repeat(120_001);
         assert!(
             super::conversation_messages(&conversation, super::ModificationMode::Draft).is_err()
         );

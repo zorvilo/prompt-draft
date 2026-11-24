@@ -33,6 +33,7 @@ export interface Draft {
 }
 export type ModificationMode = "draft" | "chat";
 export interface OptimizationResult {
+  inputTokens?: number;
   content: string;
 }
 export interface ConversationMessage {
@@ -57,6 +58,9 @@ export interface ChatContext {
   mode: ModificationMode;
 }
 export interface ChatMessage extends ConversationMessage {
+  inputTokens?: number;
+  contextWarningShown?: boolean;
+  contextLimitWarningShown?: boolean;
   durationMs?: number;
   id: string;
   created: number;

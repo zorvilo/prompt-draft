@@ -1,3 +1,4 @@
+import { contextTokenBudget } from "../src/features/workspace/contextBudget.ts";
 import assert from "node:assert/strict";
 import { prepareConversation, currentResultReply, conversationUsage, recordReply, changeMode, latestContext } from "../src/features/workspace/conversation.ts";
 import { duplicateDraft } from "../src/features/workspace/duplicateDraft.ts";
@@ -83,16 +84,13 @@ assert.ok(timed.messages[1].created >= beforeCompletion);
 assert.ok(timed.messages[1].created - timed.messages[0].created >= 5000);
 console.log("user send time and assistant completion time are saved independently");
 
-const usage = conversationUsage({ systemPrompt: "规则", messages: [{ role: "user", content: "你好" }] });
-assert.equal(usage.characters, 4);
-assert.equal(usage.messages, 1);
-assert.equal(usage.exceeded, false);
-assert.equal(conversationUsage({ systemPrompt: "长".repeat(120001), messages: [] }).exceeded, true);
-assert.equal(conversationUsage({ systemPrompt: "", messages: Array.from({ length: 100 }, () => ({ content: "字" })) }).exceeded, true);
-const hugeTemplate = { ...template, id: "huge", content: "长".repeat(120001) };
-assert.throws(() => prepareConversation(draft, hugeTemplate, "继续", "chat"));
-const measured = prepareConversation(draft, hugeTemplate, "继续", "chat", false);
-assert.equal(conversationUsage(measured).exceeded, true);
+assert.equal(conversationUsage({ messages: [] }).tokens, undefined);
+assert.equal(conversationUsage({ messages: [{ role: "assistant", inputTokens: 80000 }] }).ratio, 80000 / contextTokenBudget);
+assert.equal(conversationUsage({ messages: [{ role: "assistant", inputTokens: contextTokenBudget }] }).exceeded, true);
+assert.equal(conversationUsage({ messages: [{ role: "assistant", inputTokens: 240000 }] }).ratio, 240000 / contextTokenBudget);
+assert.equal(conversationUsage({ messages: [{ role: "assistant", inputTokens: 80000 }, { role: "assistant" }] }).tokens, undefined);
+const longHistory = { ...draft, messages: Array.from({ length: 110 }, (_, i) => ({ id: String(i), role: i % 2 ? "assistant" : "user", content: "正文" })) };
+assert.ok(prepareConversation(longHistory, template, "继续", "chat").messages.length > 99);
 
 const resultMessages = [
   { id: "template", role: "assistant", content: "第一稿" },
@@ -103,3 +101,8 @@ assert.equal(currentResultReply({ result: "第一稿", messages: resultMessages 
 assert.equal(currentResultReply({ result: "手动修改稿", messages: resultMessages }), undefined);
 assert.equal(currentResultReply({ result: "", messages: resultMessages }), undefined);
 assert.equal(currentResultReply({ result: "改进稿", messages: [...resultMessages, { id: "latest", role: "assistant", content: "改进稿" }] }).id, "latest");
+
+const metered = { ...draft, messages: [] };
+recordReply(metered, prepareConversation(metered, template, undefined, "draft"), { content: "回复", inputTokens: 200000 }, "draft", "model", "provider");
+assert.equal(metered.messages.at(-1).inputTokens, 200000);
+assert.equal(conversationUsage(metered).exceeded, true);

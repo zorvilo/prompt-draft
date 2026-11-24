@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { contextTokenBudget, contextWarningRatio } from "./contextBudget";
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   ArrowLeft,
   Check,
   CircleHelp,
+  Info,
   ChevronRight,
   ChevronDown,
   Copy,
@@ -460,24 +462,10 @@ async function setDefaultProfile(id: string) {
   if (saveError.value) message.error(saveError.value);
   else message.success("已设为默认供应商");
 }
-const contextUsage = computed(() => {
-  const item = draft.value;
-  const template = selectedTemplate.value;
-  if (!item || !template) return undefined;
-  const starting = !item.result && !item.messages.length;
-  const input = item.dialogue?.chatInput ?? "";
-  const preview =
-    starting && input.trim() ? { ...item, source: input.trim() } : item;
-  return conversationUsage(
-    prepareConversation(
-      preview,
-      template,
-      starting ? undefined : input.trim() || undefined,
-      "chat",
-      false,
-    ),
-  );
-});
+const contextUsage = computed(() =>
+  draft.value ? conversationUsage(draft.value) : undefined,
+);
+let budgetConfirmationOpen = false;
 const comparisonSource = computed(() => draft.value?.source ?? "");
 
 function create(projectId?: string) {
@@ -1044,7 +1032,13 @@ function confirm(
 
 async function optimize() {
   const item = draft.value;
-  if (!item || requests.has(item.id) || utilities.value) return;
+  if (
+    !item ||
+    requests.has(item.id) ||
+    utilities.value ||
+    budgetConfirmationOpen
+  )
+    return;
   const template = selectedTemplate.value;
   if (!template) {
     message.info("请先选择优化模板。");
@@ -1058,8 +1052,78 @@ async function optimize() {
   const instruction =
     mode === "draft" || startingChat ? undefined : input.trim() || undefined;
   if (mode === "chat" && !startingChat && !instruction) return;
+  if (mode === "chat") {
+    const reply = item.messages.at(-1);
+    const start = item.messages
+      .map((entry) => entry.context?.mode)
+      .lastIndexOf("draft");
+    const segment = item.messages.slice(Math.max(start, 0));
+    if (
+      reply?.inputTokens !== undefined &&
+      reply.inputTokens >= contextTokenBudget &&
+      !segment.some((entry) => entry.contextLimitWarningShown)
+    ) {
+      budgetConfirmationOpen = true;
+      const proceed = await new Promise<boolean>((resolve) => {
+        dialog.warning({
+          title: "上下文已达到参考预算",
+          content: `当前草稿上次输入已达到 ${contextTokenBudget.toLocaleString("en-US")} Token 参考预算，继续使用可能导致费用增加，或因超出模型上下文容量而请求失败。建议新建草稿继续使用，或切换到「模板优化」重新优化后再继续对话。是否继续发送？`,
+          positiveText: "继续发送",
+          negativeText: "取消",
+          onPositiveClick: () => resolve(true),
+          onNegativeClick: () => resolve(false),
+          onClose: () => resolve(false),
+          onMaskClick: () => resolve(false),
+          onEsc: () => resolve(false),
+        });
+      });
+      budgetConfirmationOpen = false;
+      if (
+        !proceed ||
+        draft.value?.id !== item.id ||
+        item.dialogue?.mode !== "chat" ||
+        item.dialogue?.chatInput !== input ||
+        utilities.value
+      )
+        return;
+      reply.contextLimitWarningShown = true;
+      reply.contextWarningShown = true;
+    } else if (
+      reply?.inputTokens !== undefined &&
+      reply.inputTokens >= contextTokenBudget * contextWarningRatio &&
+      !segment.some((entry) => entry.contextWarningShown)
+    ) {
+      reply.contextWarningShown = true;
+      message.warning(
+        `上下文已使用参考预算的 ${contextWarningRatio * 100}%。为减少历史输入和费用，建议适时新建草稿，或切换到「模板优化」重新优化后继续对话。`,
+      );
+    }
+  }
+
   if (!profile.value) {
-    if (!models.value.length) openUtilities("model");
+    if (!models.value.length)
+      dialog.create({
+        title: () =>
+          h(
+            "span",
+            { style: { display: "flex", alignItems: "center", gap: "10px" } },
+            [
+              h(Info, {
+                size: 20,
+                strokeWidth: 1.7,
+                "aria-hidden": "true",
+                style: { flexShrink: 0, opacity: 0.7 },
+              }),
+              "请先添加供应商",
+            ],
+          ),
+        showIcon: false,
+        positiveButtonProps: { type: "primary" },
+        content: "优化提示词需要使用 AI 模型，请先添加供应商并配置 API Key。",
+        positiveText: "前往添加",
+        negativeText: "暂不添加",
+        onPositiveClick: () => openUtilities("model"),
+      });
     else message.info("请选择供应商。");
     return;
   }
@@ -1892,7 +1956,7 @@ onUnmounted(() => {
               data.shortcuts?.optimize ?? defaultShortcuts.optimize
             "
             :template-name="selectedTemplate?.name"
-            @generate="optimize"
+            @generate="optimize()"
             @copy="copyText"
             @download="
               (content) =>
@@ -2035,12 +2099,6 @@ onUnmounted(() => {
                 :disabled="!profile"
                 @update:value="(model) => (selectedModel = model)"
               />
-              <n-button
-                v-if="!models.length"
-                quaternary
-                @click="openUtilities('model')"
-                >添加供应商</n-button
-              >
             </template>
           </prompt-workspace>
         </template>

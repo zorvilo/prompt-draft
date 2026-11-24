@@ -26,6 +26,12 @@ pub struct ChatContext {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChatMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context_warning_shown: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    context_limit_warning_shown: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     duration_ms: Option<u64>,
     id: String,
     role: crate::optimizer::ConversationRole,
@@ -1049,6 +1055,8 @@ mod relational_tests {
         document.drafts[0].provider_id = Some("account".into());
         document.drafts[0].model = Some("custom-model".into());
         document.profiles[0].is_default = true;
+        document.drafts[0].messages[1].input_tokens = Some(200000);
+        document.drafts[0].messages[1].context_warning_shown = Some(true);
         document.default_template_id = Some("prompt-general".into());
         let state = json!({"mode":"chat","chatInput":"下一条消息"});
         document.drafts[0].dialogue = Some(serde_json::from_value(state.clone()).unwrap());

@@ -8,7 +8,7 @@ const server = await createServer({ server: { middlewareMode: true, hmr: false }
 try {
   const { default: Panel } = await server.ssrLoadModule("/src/features/workspace/PromptWorkspace.vue");
   const source = { id: "d", source: "原始需求", result: "当前正文", title: "测试", messages: [], favorite: false };
-  const render = async (draft, request) => { const app = createSSRApp({ render: () => h(Panel, { draft, request, templateName: "基础优化", contextUsage: { characters: 32000, messages: 25, ratio: 0.27, exceeded: false } }) }); setup(app); return renderToString(app); };
+  const render = async (draft, request) => { const app = createSSRApp({ render: () => h(Panel, { draft, request, templateName: "基础优化", contextUsage: { tokens: 80000, ratio: 0.4, exceeded: false } }) }); setup(app); return renderToString(app); };
 
   const plain = await render({ ...source, dialogue: { mode: "draft",  } });
   assert.ok(plain.includes("draft-comparison-panels"));
@@ -25,7 +25,7 @@ try {
   const chat = await render({ ...source, messages, dialogue: { mode: "chat" } });
   assert.ok(chat.includes("已重新优化，后续对话从这里开始"));
   assert.ok(chat.includes("chat-event-notice"));
-  assert.ok(chat.includes("应用上下文用量 27%，32000 字符，25 条消息"));
+  assert.ok(chat.includes("应用上下文用量 40%，80000 Token"));
   assert.ok(chat.includes("用时 1.2 秒"));
   assert.ok(chat.includes("下载回复"));
   assert.ok(!chat.includes("用作优化稿"));

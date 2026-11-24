@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { contextTokenBudget, contextWarningRatio } from "./contextBudget";
 import {
   defaultShortcuts,
   shortcutFromEvent,
@@ -34,6 +35,11 @@ import ChatNotice from "./ChatNotice.vue";
 import { chatNotices } from "./chatNotices";
 import appIcon from "../../../src-tauri/icons/icon.png";
 
+function formatContextTokens(tokens: number) {
+  if (tokens < 1000) return String(tokens);
+  return `${Math.floor(tokens / 10) / 100}K`;
+}
+
 const props = defineProps<{
   request?: {
     text: string;
@@ -46,8 +52,7 @@ const props = defineProps<{
   };
   templateName?: string;
   contextUsage?: {
-    characters: number;
-    messages: number;
+    tokens?: number;
     ratio: number;
     exceeded: boolean;
   };
@@ -643,19 +648,22 @@ async function selectMode(value: ModificationMode) {
       <div class="modification-composer-tools">
         <slot name="template" /><slot name="models" />
         <n-tooltip
-          v-if="mode === 'chat' && contextUsage"
+          v-if="
+            mode === 'chat' && contextUsage && (contextUsage.tokens ?? 0) > 0
+          "
           trigger="hover"
-          :style="{ maxWidth: 'min(320px, calc(100vw - 32px))' }"
+          :delay="250"
+          :style="{ maxWidth: 'calc(100vw - 32px)' }"
         >
           <template #trigger>
             <button
               type="button"
               class="context-usage"
               :class="{
-                'is-warning': contextUsage.ratio >= 0.8,
+                'is-warning': contextUsage.ratio >= contextWarningRatio,
                 'is-exceeded': contextUsage.exceeded,
               }"
-              :aria-label="`应用上下文用量 ${Math.round(contextUsage.ratio * 100)}%，${contextUsage.characters} 字符，${contextUsage.messages} 条消息`"
+              :aria-label="`应用上下文用量 ${Math.round(contextUsage.ratio * 100)}%，${contextUsage.tokens ?? '未知'} Token`"
             >
               <svg
                 width="18"
@@ -675,26 +683,19 @@ async function selectMode(value: ModificationMode) {
               </svg>
             </button>
           </template>
-          <div class="context-usage-detail">
-            <strong>应用上下文用量</strong>
+          <div class="context-usage-detail context-usage-compact">
+            <span>上下文参考预算：</span>
+            <strong
+              >{{ Math.round(contextUsage.ratio * 100) }}% 已用（剩余
+              {{
+                Math.max(0, 100 - Math.round(contextUsage.ratio * 100))
+              }}%）</strong
+            >
             <span
-              >{{ contextUsage.characters.toLocaleString() }} / 120,000
-              字符</span
+              >已用
+              {{ formatContextTokens(contextUsage.tokens ?? 0) }} Token，共
+              {{ formatContextTokens(contextTokenBudget) }}</span
             >
-            <span>{{ contextUsage.messages }} / 99 条消息</span>
-            <span
-              >包含所选模板、本轮历史及当前输入；从最近一次模板优化开始计算。</span
-            >
-            <span v-if="contextUsage.exceeded"
-              >{{ contextUsage.characters > 120000 ? "字符数已超过上限。" : ""
-              }}{{
-                contextUsage.messages > 99 ? "消息数已超过上限。" : ""
-              }}请重新优化开启新一轮，旧记录保留。</span
-            >
-            <span v-else-if="contextUsage.ratio >= 0.8"
-              >接近上限，建议重新优化开启新一轮。</span
-            >
-            <span>按字符统计，不代表模型的 Token 容量。</span>
           </div>
         </n-tooltip>
         <n-button

@@ -1764,13 +1764,25 @@ input:focus-visible {
   font-size: 15px;
 }
 .is-chat .modification-composer-tools {
-  gap: 6px;
+  gap: 8px;
+  padding-top: 10px;
+}
+.is-chat .modification-composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+.is-chat .modification-composer-tools > .context-usage {
+  width: 24px;
+  height: 32px;
+  flex: 0 0 24px;
+  margin-right: 4px;
 }
 .is-chat
   .modification-composer-tools
   :is(.template-menu-trigger, .n-base-selection) {
   --n-color: transparent !important;
-  --n-color-active: var(--rail) !important;
+  --n-color-active: transparent !important;
+  --n-color-hover: transparent !important;
+  --n-color-focus: transparent !important;
   --n-border: 1px solid transparent !important;
   --n-border-hover: 1px solid transparent !important;
   --n-border-focus: 1px solid transparent !important;
@@ -2007,10 +2019,10 @@ input:focus-visible {
   margin-left: 8px;
 }
 .modification-composer-tools > .chat-send-button {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  flex: 0 0 34px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  flex: 0 0 32px;
   padding: 0;
   align-self: center;
   display: inline-flex;
@@ -2024,6 +2036,8 @@ input:focus-visible {
   display: none;
 }
 .chat-send-button svg {
+  width: 16px;
+  height: 16px;
   display: block;
 }
 .chat-reply-expanded {
@@ -2203,7 +2217,7 @@ input:focus-visible {
   border-radius: 50%;
   background: transparent;
   color: var(--muted);
-  cursor: help;
+  cursor: default;
 }
 .context-usage svg circle {
   fill: none;
@@ -2323,7 +2337,19 @@ input:focus-visible {
   background: transparent;
   color: inherit;
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+.mode-option:hover .mode-help,
+.mode-option:focus-within .mode-help {
   opacity: 0.65;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .mode-help {
+    opacity: 0.65;
+    pointer-events: auto;
+  }
 }
 .mode-help:hover,
 .mode-help:focus-visible {
@@ -2365,4 +2391,14 @@ input:focus-visible {
 .template-option-help:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 1px;
+}
+
+.context-usage-detail.context-usage-compact {
+  gap: 3px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.context-usage-compact > :first-child {
+  opacity: 0.65;
 }

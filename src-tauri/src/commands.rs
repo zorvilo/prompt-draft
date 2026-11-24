@@ -168,7 +168,12 @@ pub async fn optimize(
             result,
         _ = receiver => { cancelled = true; Err("已取消优化。".into()) },
     };
-    let result = result.and_then(|text| optimizer::parse_reply(&text));
+    let result = result
+        .and_then(|text| optimizer::parse_reply(&text))
+        .map(|mut reply| {
+            reply.input_tokens = usage.input;
+            reply
+        });
     state.requests.lock().unwrap().remove(&request_id);
     state.record_usage(
         &profile,

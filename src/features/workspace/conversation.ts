@@ -1,3 +1,4 @@
+import { contextTokenBudget } from "./contextBudget.ts";
 import type {
   ChatContext,
   ChatMessage,
@@ -24,16 +25,14 @@ export function prepareConversation(
   template: PromptTemplate,
   instruction?: string,
   mode: ModificationMode = "chat",
-  validate = true,
 ): Conversation {
   if (mode === "draft") instruction = undefined;
   if (
-    validate &&
     instruction !== undefined &&
     (!instruction.trim() || Array.from(instruction).length > 4000)
   )
     throw new Error("请输入 1 至 4,000 字的消息。");
-  if (validate && Array.from(draft.result).length > 60_000)
+  if (Array.from(draft.result).length > 60_000)
     throw new Error("当前稿最多 60,000 字。");
   const existing = mode === "chat" ? latestContext(draft) : undefined;
   const start = draft.messages
@@ -96,29 +95,14 @@ export function prepareConversation(
       });
     }
   }
-  const usage = conversationUsage(conversation);
-  if (validate && usage.exceeded)
-    throw new Error(
-      "当前对话上下文过长，请在双框重新优化开始新一轮；旧记录仍保留。",
-    );
   return conversation;
 }
 
-export function conversationUsage(conversation: Conversation) {
-  const characters =
-    Array.from(conversation.systemPrompt).length +
-    conversation.messages.reduce(
-      (sum, message) => sum + Array.from(message.content).length,
-      0,
-    );
-  const messages = conversation.messages.length;
-  const ratio = Math.max(characters / 120_000, messages / 99);
-  return {
-    characters,
-    messages,
-    ratio,
-    exceeded: characters > 120_000 || messages > 99,
-  };
+export function conversationUsage(draft: Draft) {
+  const last = draft.messages.at(-1);
+  const tokens = last?.role === "assistant" ? last.inputTokens : undefined;
+  const ratio = tokens === undefined ? 0 : tokens / contextTokenBudget;
+  return { tokens, ratio, exceeded: ratio >= 1 };
 }
 
 export function recordReply(
@@ -150,6 +134,7 @@ export function recordReply(
   entries.push({
     id: crypto.randomUUID(),
     role: "assistant",
+    inputTokens: reply.inputTokens,
     content: reply.content,
     durationMs,
     created,

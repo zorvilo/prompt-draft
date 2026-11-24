@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Default)]
 pub struct Usage {
     pub started: bool,
-    input: Option<i64>,
+    pub input: Option<i64>,
     output: Option<i64>,
     cache_read: Option<i64>,
     cache_write: Option<i64>,
