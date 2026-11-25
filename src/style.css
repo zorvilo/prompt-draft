@@ -2573,3 +2573,11 @@ input:focus-visible {
     flex-wrap: wrap;
   }
 }
+
+.qq-brand {
+  width: 17px;
+  height: 17px;
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+}

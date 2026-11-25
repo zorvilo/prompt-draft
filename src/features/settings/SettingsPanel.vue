@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import qqIcon from "../../assets/brands/qq";
 import appIcon from "../../../src-tauri/icons/icon.png";
 import ShortcutSettings from "./ShortcutSettings.vue";
 import { version } from "../../../package.json";
@@ -7,7 +8,6 @@ import { computed, ref, watch } from "vue";
 import {
   ArrowLeft,
   Copy,
-  MessageCircle,
   CircleCheck,
   CircleAlert,
   Building2,
@@ -924,7 +924,12 @@ async function run(action: "test" | "save" | "clear") {
                       @click="copyAboutInfo('qq')"
                     >
                       <template #icon>
-                        <MessageCircle :size="17" aria-hidden="true" />
+                        <img
+                          :src="qqIcon"
+                          class="qq-brand"
+                          alt=""
+                          aria-hidden="true"
+                        />
                       </template>
                       QQ {{ authorQQ }}
                     </n-button>
