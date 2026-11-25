@@ -29,6 +29,7 @@ import {
 } from "lucide-vue-next";
 import {
   NButton,
+  NModal,
   NProgress,
   NSwitch,
   NForm,
@@ -117,19 +118,24 @@ async function checkUpdate() {
     updateBusy.value = false;
   }
 }
-async function downloadUpdate() {
+const showUpdateSource = ref(false);
+async function downloadUpdate(source: "gitee" | "github") {
   if (updateBusy.value || !updateInfo.value) return;
   updateBusy.value = true;
+  showUpdateSource.value = false;
   updateStage.value = "download";
   updateError.value = "";
   updateProgress.value = undefined;
   try {
-    await desktop.downloadUpdate(({ downloaded, total }) => {
+    await desktop.downloadUpdate(source, ({ downloaded, total }) => {
       updateProgress.value = total
         ? Math.min(100, Math.floor((downloaded / total) * 100))
         : undefined;
     });
     updateInfo.value.downloaded = true;
+    updateStage.value = "install";
+    await props.prepareUpdate();
+    await desktop.installUpdate();
   } catch (error) {
     updateError.value = errorMessage(error);
   } finally {
@@ -419,6 +425,20 @@ async function run(action: "test" | "save" | "clear") {
 </script>
 
 <template>
+  <n-modal
+    v-model:show="showUpdateSource"
+    preset="card"
+    title="选择更新下载来源"
+    style="width: 440px; max-width: calc(100vw - 32px)"
+  >
+    <p>
+      下载进度将在关于页面显示。下载并验证完成后，将自动保存数据并安装更新，应用会退出并重新启动。
+    </p>
+    <n-space>
+      <n-button @click="downloadUpdate('gitee')">Gitee（国内推荐）</n-button>
+      <n-button @click="downloadUpdate('github')">GitHub（海外推荐）</n-button>
+    </n-space>
+  </n-modal>
   <div
     class="settings"
     :class="{ 'is-about': section === 'settings' && settingsTab === 'about' }"
@@ -972,7 +992,7 @@ async function run(action: "test" | "save" | "clear") {
                     type="primary"
                     :loading="updateBusy && updateStage === 'download'"
                     :disabled="updateBusy"
-                    @click="downloadUpdate"
+                    @click="showUpdateSource = true"
                     >下载更新</n-button
                   >
                   <n-button

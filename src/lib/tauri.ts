@@ -201,8 +201,13 @@ export const desktop = {
   supportInfo: () => invoke<SupportInfo>("support_info"),
   checkUpdate: () => invoke<AvailableUpdate | null>("check_update"),
   downloadUpdate: (
+    source: "gitee" | "github",
     onProgress: (value: { downloaded: number; total?: number }) => void,
-  ) => invoke<void>("download_update", { onProgress: new Channel(onProgress) }),
+  ) =>
+    invoke<void>("download_update", {
+      source,
+      onProgress: new Channel(onProgress),
+    }),
   installUpdate: () => invoke<void>("install_update"),
   modelsDevPicker: (refresh = false) =>
     invoke<{

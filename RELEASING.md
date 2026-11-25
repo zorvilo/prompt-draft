@@ -1,6 +1,6 @@
 # 发布与应用内更新
 
-应用通过 Tauri 官方 Updater 检查更新、下载验签并安装 NSIS 更新包，更新入口位于「设置 → 关于」。目前只生成 Windows x86_64 更新清单。源码和发行版同时维护在 [Gitee](https://gitee.com/liuliang6666/prompt-draft) 与 [GitHub](https://github.com/zorvilo/prompt-draft)。应用内自动更新目前仍读取 Gitee 的清单与下载地址；双平台下载入口不代表自动更新具备跨平台下载回退。
+应用通过 Tauri 官方 Updater 检查更新、下载验签并安装 NSIS 更新包，更新入口位于「设置 → 关于」。目前只生成 Windows x86_64 更新清单。源码和发行版同时维护在 [Gitee](https://gitee.com/liuliang6666/prompt-draft) 与 [GitHub](https://github.com/zorvilo/prompt-draft)。检查更新优先读取 Gitee 清单，失败后尝试 GitHub。下载前可选择 Gitee 或 GitHub，在关于页显示进度；下载验签完成后自动保存并安装，仍有模型请求、数据操作或保存失败时保留下载并提示重试安装。
 
 ## 源码同步
 
@@ -32,7 +32,10 @@ git push github v0.1.1
    node scripts/prepare-update.mjs "Gitee安装包的HTTPS直链" "安装包.sig的路径" "说明.txt" "latest.json"
    ```
 
-6. 将生成的 `latest.json` 提交并推送到两个仓库的 `master` 分支根目录，确认 `https://gitee.com/liuliang6666/prompt-draft/raw/master/latest.json` 无需登录即可返回 JSON。始终先上传两个平台的安装包，最后发布清单；清单内签名取自当前安装包，不可复用旧签名。不将任何私钥或密钥密码上传到仓库。
+6. 另用 GitHub 安装包的 HTTPS 直链和同一个签名生成第二份清单（输出到仓库外临时目录的 `latest.json`），作为 GitHub 对应 Release 的附件上传。该清单中的版本必须与 Gitee 一致，下载地址必须指向 GitHub 的同一次构建安装包。GitHub 更新器读取 `https://github.com/zorvilo/prompt-draft/releases/latest/download/latest.json`，因此该 Release 必须为正式最新版，不能是草稿或预发布。不要用 Gitee 下载地址生成的清单代替 GitHub 附件。
+
+   将 Gitee 下载地址生成的 `latest.json` 提交并推送到两个仓库的 `master` 分支根目录，确认 `https://gitee.com/liuliang6666/prompt-draft/raw/master/latest.json` 无需登录即可返回 JSON。始终先上传两个平台的安装包，最后发布清单；清单内签名取自当前安装包，不可复用旧签名。不将任何私钥或密钥密码上传到仓库。
+
 7. 用旧版实际测试检查、下载、验签、安装及重启，确认草稿、供应商密钥、设置仍存在。无更新、网络失败、下载失败、签名错误、生成期间拒绝安装及保存失败均应测试。
 8. 完成后清除会话中的签名环境变量和临时私钥文件，保留 Bitwarden 与独立加密备份。
 

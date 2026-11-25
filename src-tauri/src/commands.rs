@@ -546,12 +546,46 @@ pub struct AvailableUpdate {
     downloaded: bool,
 }
 
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateSource {
+    Gitee,
+    Github,
+}
+impl UpdateSource {
+    fn endpoint(self) -> &'static str {
+        match self {
+            Self::Gitee => "https://gitee.com/liuliang6666/prompt-draft/raw/master/latest.json",
+            Self::Github => {
+                "https://github.com/zorvilo/prompt-draft/releases/latest/download/latest.json"
+            }
+        }
+    }
+}
+async fn find_update(
+    app: &tauri::AppHandle,
+    source: UpdateSource,
+) -> Result<Option<tauri_plugin_updater::Update>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    app.updater_builder()
+        .endpoints(vec![source
+            .endpoint()
+            .parse()
+            .map_err(|_| "更新地址无效。")?])
+        .map_err(|_| "更新地址无效。")?
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|_| "无法初始化更新检查。")?
+        .check()
+        .await
+        .map_err(|_| "检查更新失败，请检查网络或稍后重试。".into())
+}
+
 #[tauri::command]
 pub async fn check_update(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<AvailableUpdate>, String> {
-    use tauri_plugin_updater::UpdaterExt;
     let mut slot = state
         .update
         .try_lock()
@@ -565,14 +599,10 @@ pub async fn check_update(
             }));
         }
     }
-    let found = app
-        .updater_builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|_| "无法初始化更新检查。")?
-        .check()
-        .await
-        .map_err(|_| "检查更新失败，请检查网络或稍后重试。")?;
+    let found = match find_update(&app, UpdateSource::Gitee).await {
+        Ok(found) => found,
+        Err(_) => find_update(&app, UpdateSource::Github).await?,
+    };
     let info = found.as_ref().map(|update| AvailableUpdate {
         version: update.version.clone(),
         notes: update.body.clone(),
@@ -584,6 +614,8 @@ pub async fn check_update(
 
 #[tauri::command]
 pub async fn download_update(
+    app: tauri::AppHandle,
+    source: UpdateSource,
     state: State<'_, AppState>,
     on_progress: Channel<serde_json::Value>,
 ) -> Result<(), String> {
@@ -591,10 +623,18 @@ pub async fn download_update(
         .update
         .try_lock()
         .map_err(|_| "更新操作正在进行，请稍后重试。")?;
-    let (update, bytes) = slot.as_mut().ok_or("请先检查更新。")?;
+    let (current, bytes) = slot.as_ref().ok_or("请先检查更新。")?;
     if bytes.is_some() {
         return Ok(());
     }
+    let selected = find_update(&app, source)
+        .await?
+        .ok_or("所选来源尚未发布更新，请选择其他来源。")?;
+    if selected.version != current.version {
+        return Err("来源版本不一致，请重新检查或选择其他来源。".into());
+    }
+    *slot = Some((selected, None));
+    let (update, bytes) = slot.as_mut().ok_or("请先检查更新。")?;
     let mut downloaded = 0u64;
     let data = update
         .download(
@@ -650,5 +690,23 @@ mod support_info_tests {
         }
         assert_eq!(value["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(value["arch"], std::env::consts::ARCH);
+    }
+}
+
+#[cfg(test)]
+mod update_source_tests {
+    use super::UpdateSource;
+    #[test]
+    fn sources_are_explicit_and_unknown_sources_are_rejected() {
+        for (name, host) in [("gitee", "gitee.com"), ("github", "github.com")] {
+            let source: UpdateSource = serde_json::from_value(serde_json::json!(name)).unwrap();
+            let url = url::Url::parse(source.endpoint()).unwrap();
+            assert_eq!(url.scheme(), "https");
+            assert_eq!(url.host_str(), Some(host));
+        }
+        assert!(
+            serde_json::from_value::<UpdateSource>(serde_json::json!("https://example.com"))
+                .is_err()
+        );
     }
 }
