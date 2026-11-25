@@ -2490,9 +2490,9 @@ input:focus-visible {
   overflow-wrap: anywhere;
   max-width: 340px;
 }
-.about-support {
+.settings .about-support {
   grid-column: 1 / -1;
-  padding-top: 22px;
+  padding: 22px 0 0;
   border-top: 1px solid var(--line);
 }
 .about-support-heading {
@@ -2501,6 +2501,7 @@ input:focus-visible {
   justify-content: space-between;
   gap: 16px;
 }
+.about-contact-row h3,
 .about-support-heading h3 {
   margin: 0;
   font-size: 14px;
@@ -2537,18 +2538,49 @@ input:focus-visible {
   user-select: text;
   text-align: right;
 }
-.about-author {
-  grid-column: 2;
+.settings .about-contact-row {
+  grid-column: 1 / -1;
+  padding: 22px 0 0;
+  border-top: 1px solid var(--line);
+}
+.about-contact-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.about-contact-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.about-contact-details {
   display: flex;
   align-items: center;
-  gap: 6px 14px;
   flex-wrap: wrap;
-  margin-top: 10px;
+  gap: 16px 28px;
+  margin-top: 16px;
+}
+.about-author-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 14px;
+}
+.about-author-name span {
   color: var(--muted);
   font-size: 12px;
 }
 .about-contact {
   font-variant-numeric: tabular-nums;
+}
+.about-contact-number {
+  margin-left: 4px;
+  font-size: 13px;
+}
+.about-contact-copy {
+  margin-left: 18px;
+  color: var(--muted);
 }
 @media (max-width: 740px) {
   .about-page {
@@ -2575,8 +2607,8 @@ input:focus-visible {
 }
 
 .qq-brand {
-  width: 17px;
-  height: 17px;
+  width: 28px;
+  height: 28px;
   display: block;
   object-fit: contain;
   flex-shrink: 0;

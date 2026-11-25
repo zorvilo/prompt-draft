@@ -912,31 +912,6 @@ async function run(action: "test" | "save" | "clear") {
               <h2 id="about-heading">词稿</h2>
               <span class="about-version">版本 {{ version }}</span>
               <p>专注提示词的编写、优化与管理。</p>
-              <div class="about-author">
-                <span>由 刘涵宇 开发</span>
-                <n-tooltip :delay="250" placement="top">
-                  <template #trigger>
-                    <n-button
-                      class="about-contact"
-                      quaternary
-                      size="small"
-                      aria-label="复制作者 QQ 号 2510039438"
-                      @click="copyAboutInfo('qq')"
-                    >
-                      <template #icon>
-                        <img
-                          :src="qqIcon"
-                          class="qq-brand"
-                          alt=""
-                          aria-hidden="true"
-                        />
-                      </template>
-                      QQ {{ authorQQ }}
-                    </n-button>
-                  </template>
-                  点击复制 QQ 号
-                </n-tooltip>
-              </div>
             </section>
             <section
               class="about-updates"
@@ -1012,6 +987,45 @@ async function run(action: "test" | "save" | "clear") {
                     >安装前请结束模型请求，应用会先保存当前数据。</span
                   >
                 </div>
+              </div>
+            </section>
+            <section
+              class="about-contact-row"
+              aria-labelledby="contact-heading"
+            >
+              <div class="about-contact-heading">
+                <h3 id="contact-heading">联系作者</h3>
+                <p>使用建议与问题反馈，欢迎联系。</p>
+              </div>
+              <div class="about-contact-details">
+                <span class="about-author-name">刘涵宇<span>开发者</span></span>
+                <n-tooltip :delay="250" placement="top">
+                  <template #trigger>
+                    <n-button
+                      class="about-contact"
+                      :icon-size="24"
+                      size="small"
+                      aria-label="复制作者 QQ 号 2510039438"
+                      @click="copyAboutInfo('qq')"
+                    >
+                      <template #icon>
+                        <img
+                          :src="qqIcon"
+                          class="qq-brand"
+                          alt=""
+                          aria-hidden="true"
+                        />
+                      </template>
+                      <span class="about-contact-number">{{ authorQQ }}</span>
+                      <Copy
+                        :size="14"
+                        class="about-contact-copy"
+                        aria-hidden="true"
+                      />
+                    </n-button>
+                  </template>
+                  点击复制 QQ 号
+                </n-tooltip>
               </div>
             </section>
             <section class="about-support" aria-labelledby="support-heading">
