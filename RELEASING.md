@@ -1,6 +1,20 @@
 # 发布与应用内更新
 
-应用通过 Tauri 官方 Updater 检查更新、下载验签并安装 NSIS 更新包，更新入口位于「设置 → 关于」。目前只生成 Windows x86_64 更新清单。源码、发行版安装包和更新清单统一维护在公开仓库 `https://gitee.com/liuliang6666/prompt-draft`。
+应用通过 Tauri 官方 Updater 检查更新、下载验签并安装 NSIS 更新包，更新入口位于「设置 → 关于」。目前只生成 Windows x86_64 更新清单。源码和发行版同时维护在 [Gitee](https://gitee.com/liuliang6666/prompt-draft) 与 [GitHub](https://github.com/zorvilo/prompt-draft)。应用内自动更新目前仍读取 Gitee 的清单与下载地址；双平台下载入口不代表自动更新具备跨平台下载回退。
+
+## 源码同步
+
+本地 `origin` 指向 Gitee，`github` 指向 GitHub。每次提交后分别推送同一分支；发布版本使用同一标签，禁止对任一平台强制覆盖历史：
+
+```powershell
+git push origin master
+git push github master
+# 发布时将实际版本标签分别推送，例如：
+git push origin v0.1.1
+git push github v0.1.1
+```
+
+标签须在确认发布的提交上创建。只同步源码不会自动创建发行版或上传安装包。
 
 ## 首次配置
 
@@ -11,14 +25,14 @@
 1. 同步修改 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 的版本号，更新对应锁文件。运行项目检查。只有明确需要发布且版本间数据库结构兼容时才发布应用内更新；当前不支持旧结构迁移，不能靠自动更新清空用户数据。
 2. 从 Bitwarden 将私钥临时保存至仓库外文件，在本次 PowerShell 会话设置 `TAURI_SIGNING_PRIVATE_KEY` 为该文件的绝对路径。通过 `Read-Host -AsSecureString` 获取密码并临时注入 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，不要把密码写进脚本、命令历史或仓库。
 3. 运行 `npm run tauri build`，生成 `src-tauri/target/release/bundle/nsis` 下的安装包和 `.sig`。签名用于更新包校验，与 Windows Authenticode 证书不同。
-4. 在源码仓库的[发行版页面](https://gitee.com/liuliang6666/prompt-draft/releases)创建对应版本的发行版，上传安装包。用未登录的请求验证附件可以直接下载，不返回网页、登录或验证码；浏览器能手动下载不代表更新程序可以直接下载。
+4. 在 [Gitee 发行版](https://gitee.com/liuliang6666/prompt-draft/releases)与 [GitHub Releases](https://github.com/zorvilo/prompt-draft/releases) 创建对应版本的发行版，使用相同标签和更新说明。将第 3 步同一次构建生成的安装包和 `.sig` 原样上传到两个平台，不要分别重新构建。核对两边安装包的 SHA-256 一致。用未登录的请求验证附件可以直接下载，不返回网页、登录或验证码；浏览器能手动下载不代表更新程序可以直接下载。
 5. 将更新说明保存为 UTF-8 文本，在源码目录执行：
 
    ```powershell
-   node scripts/prepare-update.mjs "安装包的HTTPS直链" "安装包.sig的路径" "说明.txt" "latest.json"
+   node scripts/prepare-update.mjs "Gitee安装包的HTTPS直链" "安装包.sig的路径" "说明.txt" "latest.json"
    ```
 
-6. 将生成的 `latest.json` 提交并推送到当前源码仓库的 `master` 分支根目录，确认 `https://gitee.com/liuliang6666/prompt-draft/raw/master/latest.json` 无需登录即可返回 JSON。始终先上传安装包，最后发布清单；清单内签名取自当前安装包，不可复用旧签名。不将任何私钥或密钥密码上传到仓库。
+6. 将生成的 `latest.json` 提交并推送到两个仓库的 `master` 分支根目录，确认 `https://gitee.com/liuliang6666/prompt-draft/raw/master/latest.json` 无需登录即可返回 JSON。始终先上传两个平台的安装包，最后发布清单；清单内签名取自当前安装包，不可复用旧签名。不将任何私钥或密钥密码上传到仓库。
 7. 用旧版实际测试检查、下载、验签、安装及重启，确认草稿、供应商密钥、设置仍存在。无更新、网络失败、下载失败、签名错误、生成期间拒绝安装及保存失败均应测试。
 8. 完成后清除会话中的签名环境变量和临时私钥文件，保留 Bitwarden 与独立加密备份。
 

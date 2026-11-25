@@ -4,7 +4,8 @@
   <p><strong>把一句想法，打磨成清晰的提示词。</strong></p>
   <p>Windows 桌面提示词编辑器 · 模板优化 · 连续对话 · 本地草稿管理</p>
   <p>
-    <a href="https://gitee.com/liuliang6666/prompt-draft/releases">下载安装</a> ·
+    <a href="https://gitee.com/liuliang6666/prompt-draft/releases">Gitee 下载</a> ·
+    <a href="https://github.com/zorvilo/prompt-draft/releases">GitHub Download</a> ·
     <a href="#快速开始">快速开始</a> ·
     <a href="#界面预览">界面预览</a> ·
     <a href="#开发">本地开发</a> ·
@@ -29,6 +30,8 @@
 | 本地备份   | 导出完整 JSON 备份，在同版本应用中恢复数据与配置                     |
 
 ## 快速开始
+
+安装包在 [Gitee Releases](https://gitee.com/liuliang6666/prompt-draft/releases) 和 [GitHub Releases](https://github.com/zorvilo/prompt-draft/releases) 同步发布，选择你能顺畅访问的平台下载。同一版本使用相同安装包；尚无附件时可从源码运行。
 
 当前面向 Windows，项目仍处于测试阶段。已有安装包可直接安装启动；从源码运行请参阅[开发](#开发)。使用前需要准备模型供应商的 API Key，模型调用费用由对应供应商收取。
 
