@@ -1,11 +1,11 @@
 {
-  "version": "0.1.4",
-  "notes": "词稿 0.1.4 升级流程测试版\n\n本版本仅用于测试从 0.1.3 升级至 0.1.4 的检查、下载、验签、安装及重启流程。无功能变更，数据库结构保持不变。\n\n升级后请确认草稿、聊天、供应商和设置仍然存在。建议升级前导出完整备份；备份含明文 API Key，请妥善保管。\r\n",
-  "pub_date": "2026-11-25T08:03:45.243Z",
+  "version": "0.1.0",
+  "notes": "词稿 0.1.0 正式版\r\n\r\n首个正式版本，以当前代码为发布基线。\r\n\r\n1. 支持模板优化、连续对话、草稿与项目管理。\r\n2. 提供供应商配置、用量统计及完整本地备份。\r\n3. 启动后静默检查更新，通过侧栏更新入口查看说明、选择下载来源并安装。\r\n4. 优化关于页面及更新弹窗，Enter 默认优化或发送，Shift+Enter 换行。\r\n\r\nWindows x64。此前测试发行版已清理，已安装高版本测试版的用户请手动安装本正式版。建议安装前导出完整备份；备份包含明文 API Key，请妥善保管。",
+  "pub_date": "2026-11-25T08:57:55.667Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.4/prompt-draft_0.1.4_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOHBMbTRSM0Z0bDZnL0VYSU0xYjJLTHdiMXNvWXNma0hmeDBHRzVHYUhTUTRBWkk2NHlQbW9CU1Bxbnh3NTlleTAyRVVhQ0QxRGZHTlQ4NXl5N0lWblFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NTkzNzU4CWZpbGU66K+N56i/XzAuMS40X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuNAp0cVJzUXF5cnBzQXlyUU1Ia0NmQlJZbDlMYkF6cVdmNmFXR2wwVXJWcGtGajJIQmljVEpodUpXb0p0Mm12aGV6YTRDM1FWdU9Xd093eGttSVhQc01Ddz09Cg=="
+      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.0/prompt-draft_0.1.0_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOHVvTjRzRVpLMjFyaFhCbjIxRnZuamxxQytuaVJOeUFYS1BnWTdNQlhwL1hYdUxlbXROdWM4MDlKQ1VKNmtaeTh6MW4xM0pUbldjb3FlV0cxaCtLMncwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NTk2ODI0CWZpbGU66K+N56i/XzAuMS4wX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMAoreTVpdUprQVcvMDJrNlhZOWNGdnV5SjBLQ25qVnA1S3p4cFJTM3ZOSU1ubXBLOG1oVERtR2c1THNkbW40MHhDQXpKUS9iSFZmUW5VMEcyTEZQZzFCZz09Cg=="
     }
   }
 }
