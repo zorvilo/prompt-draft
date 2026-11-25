@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import appIcon from "../../../src-tauri/icons/icon.png";
 import ShortcutSettings from "./ShortcutSettings.vue";
 import { version } from "../../../package.json";
 import { computed, ref, watch } from "vue";
 import {
   ArrowLeft,
+  Copy,
+  MessageCircle,
+  CircleCheck,
+  CircleAlert,
   Building2,
   Database,
   Download,
@@ -24,6 +29,7 @@ import {
 } from "lucide-vue-next";
 import {
   NButton,
+  NProgress,
   NSwitch,
   NForm,
   NFormItem,
@@ -33,6 +39,7 @@ import {
   NRadioGroup,
   NTabPane,
   NTabs,
+  NTooltip,
   NSpace,
   useMessage,
 } from "naive-ui";
@@ -40,6 +47,8 @@ import {
   desktop,
   errorMessage,
   type Profile,
+  type AvailableUpdate,
+  type SupportInfo,
   type Workspace,
 } from "../../lib/tauri";
 
@@ -52,6 +61,95 @@ import {
   presetFor,
   providerLogoFile,
 } from "./modelPresets";
+const authorQQ = "2510039438";
+const supportInfo = ref<SupportInfo>();
+const supportError = ref("");
+async function loadSupportInfo() {
+  supportError.value = "";
+  try {
+    supportInfo.value = await desktop.supportInfo();
+  } catch (error) {
+    supportError.value = errorMessage(error);
+  }
+}
+const supportFields = computed(() => [
+  { label: "应用版本", value: supportInfo.value?.version ?? version },
+  { label: "运行环境", value: supportInfo.value?.runtime ?? "—" },
+  { label: "操作系统", value: supportInfo.value?.os ?? "—" },
+  { label: "系统架构", value: supportInfo.value?.arch ?? "—" },
+]);
+async function copyAboutInfo(kind: "qq" | "support") {
+  if (kind === "support" && !supportInfo.value) return;
+  try {
+    await writeText(
+      kind === "qq"
+        ? authorQQ
+        : [
+            "词稿支持信息",
+            ...supportFields.value.map(
+              (field) => `${field.label}：${field.value}`,
+            ),
+          ].join("\n"),
+    );
+    message.success(kind === "qq" ? "已复制 QQ 号" : "已复制支持信息");
+  } catch (error) {
+    message.error(errorMessage(error));
+  }
+}
+const settingsTab = ref("general");
+const updateInfo = ref<AvailableUpdate | null>(null);
+const updateBusy = ref(false);
+const updateStage = ref<"check" | "download" | "install">("check");
+const updateError = ref("");
+const checkedUpdate = ref(false);
+const updateProgress = ref<number | undefined>();
+async function checkUpdate() {
+  if (updateBusy.value) return;
+  updateBusy.value = true;
+  updateStage.value = "check";
+  updateError.value = "";
+  try {
+    updateInfo.value = await desktop.checkUpdate();
+    checkedUpdate.value = true;
+  } catch (error) {
+    updateError.value = errorMessage(error);
+  } finally {
+    updateBusy.value = false;
+  }
+}
+async function downloadUpdate() {
+  if (updateBusy.value || !updateInfo.value) return;
+  updateBusy.value = true;
+  updateStage.value = "download";
+  updateError.value = "";
+  updateProgress.value = undefined;
+  try {
+    await desktop.downloadUpdate(({ downloaded, total }) => {
+      updateProgress.value = total
+        ? Math.min(100, Math.floor((downloaded / total) * 100))
+        : undefined;
+    });
+    updateInfo.value.downloaded = true;
+  } catch (error) {
+    updateError.value = errorMessage(error);
+  } finally {
+    updateBusy.value = false;
+  }
+}
+async function installUpdate() {
+  if (updateBusy.value) return;
+  updateBusy.value = true;
+  updateStage.value = "install";
+  updateError.value = "";
+  try {
+    await props.prepareUpdate();
+    await desktop.installUpdate();
+  } catch (error) {
+    updateError.value = errorMessage(error);
+  } finally {
+    updateBusy.value = false;
+  }
+}
 const logos = import.meta.glob<string>("../../assets/providers/*.svg", {
   eager: true,
   import: "default",
@@ -64,6 +162,7 @@ function providerLogo(presetId: string | undefined) {
 
 const props = defineProps<{
   data: Workspace;
+  prepareUpdate: () => Promise<void>;
   section: "model" | "settings";
   updateShortcuts: (
     value: NonNullable<Workspace["shortcuts"]>,
@@ -79,6 +178,24 @@ const emit = defineEmits<{
   closeBehavior: [value: Workspace["closeBehavior"]];
 }>();
 const message = useMessage();
+watch([settingsTab, () => props.section], ([tab, section]) => {
+  if (section === "settings" && tab === "about") {
+    void checkUpdate();
+    void loadSupportInfo();
+  }
+});
+const updateStatus = computed(() => {
+  if (updateBusy.value)
+    return updateStage.value === "check"
+      ? "正在检查更新…"
+      : updateStage.value === "download"
+        ? "正在下载更新…"
+        : "正在准备安装…";
+  if (updateError.value) return "更新操作未完成";
+  if (updateInfo.value?.downloaded) return "更新已就绪";
+  if (updateInfo.value) return `发现新版本 ${updateInfo.value.version}`;
+  return checkedUpdate.value ? "你使用的是最新版本" : "正在准备检查更新";
+});
 const autostartEnabled = ref(false);
 const autostartBusy = ref(false);
 const autostartError = ref("");
@@ -302,7 +419,10 @@ async function run(action: "test" | "save" | "clear") {
 </script>
 
 <template>
-  <div class="settings">
+  <div
+    class="settings"
+    :class="{ 'is-about': section === 'settings' && settingsTab === 'about' }"
+  >
     <template v-if="section === 'model'">
       <section
         v-if="!adding && !profile"
@@ -570,7 +690,7 @@ async function run(action: "test" | "save" | "clear") {
         class="preferences-tabs"
         pane-class="settings-scroll"
         :animated="false"
-        default-value="general"
+        v-model:value="settingsTab"
       >
         <n-tab-pane name="general">
           <template #tab
@@ -786,29 +906,136 @@ async function run(action: "test" | "save" | "clear") {
         </n-tab-pane>
         <n-tab-pane name="about">
           <template #tab><Info :size="15" aria-hidden="true" />关于</template>
-          <div class="preferences-body">
-            <section class="preference-group" aria-labelledby="about-heading">
-              <h2 id="about-heading">关于词稿</h2>
-              <div class="preference-card">
-                <div class="about-product">
-                  <img :src="appIcon" alt="" class="about-logo" />
-                  <div>
-                    <h3>词稿</h3>
-                    <p>专注提示词的编写、优化与管理。</p>
-                  </div>
+          <div class="about-page">
+            <section class="about-identity" aria-labelledby="about-heading">
+              <img :src="appIcon" alt="" class="about-logo" />
+              <h2 id="about-heading">词稿</h2>
+              <span class="about-version">版本 {{ version }}</span>
+              <p>专注提示词的编写、优化与管理。</p>
+              <div class="about-author">
+                <span>由 刘涵宇 开发</span>
+                <n-tooltip :delay="250" placement="top">
+                  <template #trigger>
+                    <n-button
+                      class="about-contact"
+                      quaternary
+                      size="small"
+                      aria-label="复制作者 QQ 号 2510039438"
+                      @click="copyAboutInfo('qq')"
+                    >
+                      <template #icon>
+                        <MessageCircle :size="17" aria-hidden="true" />
+                      </template>
+                      QQ {{ authorQQ }}
+                    </n-button>
+                  </template>
+                  点击复制 QQ 号
+                </n-tooltip>
+              </div>
+            </section>
+            <section
+              class="about-updates"
+              aria-labelledby="update-heading"
+              :aria-busy="updateBusy"
+            >
+              <div class="about-update-heading">
+                <div
+                  class="about-update-status"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <CircleAlert
+                    v-if="updateError"
+                    :size="20"
+                    aria-hidden="true"
+                  />
+                  <Download
+                    v-else-if="updateInfo"
+                    :size="20"
+                    aria-hidden="true"
+                  />
+                  <RefreshCw
+                    v-else-if="updateBusy"
+                    :size="20"
+                    aria-hidden="true"
+                  />
+                  <CircleCheck v-else :size="20" aria-hidden="true" />
+                  <h3 id="update-heading">{{ updateStatus }}</h3>
                 </div>
-                <div class="preference-row">
-                  <h3>作者</h3>
-                  <span class="muted">刘涵宇</span>
+                <n-button
+                  size="small"
+                  :loading="updateBusy && updateStage === 'check'"
+                  :disabled="updateBusy"
+                  @click="checkUpdate"
+                  ><template #icon
+                    ><RefreshCw :size="15" aria-hidden="true" /></template
+                  >{{ updateError ? "重试检查" : "重新检查" }}</n-button
+                >
+              </div>
+              <p v-if="updateError" class="about-update-error" role="alert">
+                {{ updateError }}
+              </p>
+              <div v-if="updateInfo" class="about-update-content">
+                <p v-if="updateInfo.notes" class="app-update-notes">
+                  {{ updateInfo.notes }}
+                </p>
+                <n-progress
+                  v-if="updateBusy && updateStage === 'download'"
+                  type="line"
+                  :percentage="updateProgress ?? 0"
+                  :processing="true"
+                  :show-indicator="updateProgress !== undefined"
+                />
+                <div class="about-update-actions">
+                  <n-button
+                    v-if="!updateInfo.downloaded"
+                    type="primary"
+                    :loading="updateBusy && updateStage === 'download'"
+                    :disabled="updateBusy"
+                    @click="downloadUpdate"
+                    >下载更新</n-button
+                  >
+                  <n-button
+                    v-else
+                    type="primary"
+                    :loading="updateBusy && updateStage === 'install'"
+                    :disabled="updateBusy"
+                    @click="installUpdate"
+                    >安装并重启</n-button
+                  >
+                  <span v-if="updateInfo.downloaded"
+                    >安装前请结束模型请求，应用会先保存当前数据。</span
+                  >
                 </div>
-                <div class="preference-row">
-                  <h3>当前版本</h3>
-                  <span class="muted">{{ version }}</span>
+              </div>
+            </section>
+            <section class="about-support" aria-labelledby="support-heading">
+              <div class="about-support-heading">
+                <div>
+                  <h3 id="support-heading">支持信息</h3>
+                  <p>反馈问题时，可复制以下环境信息。</p>
                 </div>
-                <div class="preference-row">
-                  <h3>应用类型</h3>
-                  <span class="muted">桌面提示词编辑器</span>
+                <n-button
+                  size="small"
+                  :disabled="!supportInfo"
+                  @click="copyAboutInfo('support')"
+                  ><template #icon
+                    ><Copy :size="14" aria-hidden="true" /></template
+                  >复制支持信息</n-button
+                >
+              </div>
+              <div class="about-support-grid">
+                <div v-for="field in supportFields" :key="field.label">
+                  <span>{{ field.label }}</span><strong>{{
+                    field.value
+                  }}</strong>
                 </div>
+              </div>
+              <div v-if="supportError" class="about-update-error" role="alert">
+                {{ supportError }}
+                <n-button text size="small" @click="loadSupportInfo"
+                  >重新获取</n-button
+                >
               </div>
             </section>
           </div>

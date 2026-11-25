@@ -28,6 +28,7 @@ fn main() {
     builder
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
@@ -45,6 +46,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             window::autostart,
             window::window_action,
+            commands::support_info,
+            commands::check_update,
+            commands::download_update,
+            commands::install_update,
             commands::load,
             commands::usage_stats,
             commands::usage_catalog_settings,

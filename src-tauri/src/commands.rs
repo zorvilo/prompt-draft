@@ -12,6 +12,7 @@ pub struct AppState {
     client: reqwest::Client,
     models_dev: Mutex<Option<serde_json::Value>>,
     models_dev_loading: tokio::sync::Mutex<()>,
+    update: tokio::sync::Mutex<Option<(tauri_plugin_updater::Update, Option<Vec<u8>>)>>,
 }
 
 impl AppState {
@@ -23,6 +24,7 @@ impl AppState {
             client: model_client::client()?,
             models_dev: Mutex::new(None),
             models_dev_loading: tokio::sync::Mutex::new(()),
+            update: tokio::sync::Mutex::new(None),
         })
     }
 
@@ -534,4 +536,119 @@ pub fn import_models_dev_price(state: State<AppState>, key: String) -> Result<()
     }))
     .map_err(|_| "价格无效。")?;
     crate::usage::save_catalog_price(&db, price, false)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailableUpdate {
+    version: String,
+    notes: Option<String>,
+    downloaded: bool,
+}
+
+#[tauri::command]
+pub async fn check_update(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<AvailableUpdate>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let mut slot = state
+        .update
+        .try_lock()
+        .map_err(|_| "更新操作正在进行，请稍后重试。")?;
+    if let Some((update, bytes)) = slot.as_ref() {
+        if bytes.is_some() {
+            return Ok(Some(AvailableUpdate {
+                version: update.version.clone(),
+                notes: update.body.clone(),
+                downloaded: true,
+            }));
+        }
+    }
+    let found = app
+        .updater_builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|_| "无法初始化更新检查。")?
+        .check()
+        .await
+        .map_err(|_| "检查更新失败，请检查网络或稍后重试。")?;
+    let info = found.as_ref().map(|update| AvailableUpdate {
+        version: update.version.clone(),
+        notes: update.body.clone(),
+        downloaded: false,
+    });
+    *slot = found.map(|update| (update, None));
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn download_update(
+    state: State<'_, AppState>,
+    on_progress: Channel<serde_json::Value>,
+) -> Result<(), String> {
+    let mut slot = state
+        .update
+        .try_lock()
+        .map_err(|_| "更新操作正在进行，请稍后重试。")?;
+    let (update, bytes) = slot.as_mut().ok_or("请先检查更新。")?;
+    if bytes.is_some() {
+        return Ok(());
+    }
+    let mut downloaded = 0u64;
+    let data = update
+        .download(
+            |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = on_progress.send(json!({"downloaded":downloaded,"total":total}));
+            },
+            || {},
+        )
+        .await
+        .map_err(|_| "下载或签名校验失败，请重试。")?;
+    *bytes = Some(data);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn install_update(state: State<'_, AppState>) -> Result<(), String> {
+    let _operation = state
+        .operations
+        .try_write()
+        .map_err(|_| "请等待模型请求或数据操作结束后再安装更新。")?;
+    let slot = state
+        .update
+        .try_lock()
+        .map_err(|_| "更新操作正在进行，请稍后重试。")?;
+    let (update, bytes) = slot.as_ref().ok_or("请先检查并下载更新。")?;
+    let bytes = bytes.as_ref().ok_or("请先下载更新。")?;
+    update
+        .install(bytes)
+        .map_err(|_| "安装更新失败，请稍后重试。".to_string())
+}
+
+#[tauri::command]
+pub fn support_info() -> serde_json::Value {
+    let info = os_info::get();
+    json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "runtime": "Windows 桌面端",
+        "os": format!("{} {}", info.os_type(), info.version()),
+        "arch": std::env::consts::ARCH,
+    })
+}
+
+#[cfg(test)]
+mod support_info_tests {
+    #[test]
+    fn support_information_contains_only_public_environment_fields() {
+        let value = super::support_info();
+        let object = value.as_object().unwrap();
+        assert_eq!(object.len(), 4);
+        for field in ["version", "runtime", "os", "arch"] {
+            assert!(!object[field].as_str().unwrap().is_empty());
+        }
+        assert_eq!(value["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(value["arch"], std::env::consts::ARCH);
+    }
 }

@@ -10,3 +10,9 @@ src-tauri/gen/
 *.sqlite-*
 *.db
 *.db-*
+
+# Update signing material must stay outside the repository.
+*.key
+*.key.pub
+updater-password.txt
+latest.json

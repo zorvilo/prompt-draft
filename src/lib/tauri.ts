@@ -186,7 +186,24 @@ export type ModelsDevEntry = {
   cacheRead: number;
   cacheWrite: number;
 };
+export interface AvailableUpdate {
+  version: string;
+  notes?: string;
+  downloaded: boolean;
+}
+export interface SupportInfo {
+  version: string;
+  runtime: string;
+  os: string;
+  arch: string;
+}
 export const desktop = {
+  supportInfo: () => invoke<SupportInfo>("support_info"),
+  checkUpdate: () => invoke<AvailableUpdate | null>("check_update"),
+  downloadUpdate: (
+    onProgress: (value: { downloaded: number; total?: number }) => void,
+  ) => invoke<void>("download_update", { onProgress: new Channel(onProgress) }),
+  installUpdate: () => invoke<void>("install_update"),
   modelsDevPicker: (refresh = false) =>
     invoke<{
       entries: ModelsDevEntry[];

@@ -456,6 +456,11 @@ function selectProvider(id: string) {
   draft.value.model =
     models.value.find((item) => item.id === id)?.model ?? null;
 }
+async function prepareUpdate() {
+  if (hasRequests.value) throw new Error("请等待模型请求结束后再安装更新。");
+  await save();
+  if (saveError.value) throw new Error(saveError.value);
+}
 async function setDefaultProfile(id: string) {
   for (const item of data.value.profiles) item.isDefault = item.id === id;
   await save();
@@ -1926,6 +1931,7 @@ onUnmounted(() => {
               :key="utilities"
               :section="utilities"
               :update-shortcuts="updateShortcuts"
+              :prepare-update="prepareUpdate"
               @close-behavior="(value) => (data.closeBehavior = value)"
               :data="data"
               @backup="backup"

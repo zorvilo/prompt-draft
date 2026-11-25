@@ -1,6 +1,6 @@
 [package]
 name = "prompt-draft"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [build-dependencies]
@@ -19,3 +19,5 @@ rusqlite = { version = "0.32", features = ["bundled", "functions"] }
 tokio = { version = "1", features = ["sync", "macros"] }
 url = "2"
 rust_decimal = { version = "1", default-features = false }
+tauri-plugin-updater = "2"
+os_info = "3"
