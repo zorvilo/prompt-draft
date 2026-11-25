@@ -47,6 +47,7 @@ fn main() {
             window::autostart,
             window::window_action,
             commands::support_info,
+            commands::open_project_repository,
             commands::check_update,
             commands::download_update,
             commands::install_update,

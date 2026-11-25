@@ -232,7 +232,7 @@ input:focus-visible {
   padding: 0;
 }
 .library-label-end {
-  text-align: center;
+  text-align: left;
   font-variant-numeric: tabular-nums;
 }
 .library-section-title,
@@ -433,7 +433,7 @@ input:focus-visible {
 }
 .welcome-copy {
   width: min(100%, 760px);
-  text-align: center;
+  text-align: left;
 }
 .welcome-logo {
   width: 52px;
@@ -989,7 +989,7 @@ input:focus-visible {
 .shortcut-keys kbd {
   min-width: 26px;
   padding: 2px 7px;
-  text-align: center;
+  text-align: left;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--rail);
@@ -1108,7 +1108,7 @@ input:focus-visible {
   }
   .preferences .theme-options .n-radio-button {
     flex: 1;
-    text-align: center;
+    text-align: left;
   }
 }
 
@@ -1652,7 +1652,7 @@ input:focus-visible {
   align-content: center;
   justify-content: center;
   padding: 32px;
-  text-align: center;
+  text-align: left;
   color: var(--muted);
   line-height: 1.9;
 }
@@ -1787,7 +1787,7 @@ input:focus-visible {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  text-align: center;
+  text-align: left;
 }
 .chat-introduction img {
   width: 44px;
@@ -1954,7 +1954,7 @@ input:focus-visible {
   gap: 8px;
   min-width: 0;
   max-width: 80%;
-  text-align: center;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 .chat-event-notice-content > svg {
@@ -2259,7 +2259,7 @@ input:focus-visible {
   justify-content: center;
   gap: 12px;
   padding: 32px 24px;
-  text-align: center;
+  text-align: left;
   color: var(--muted);
 }
 .optimization-waiting strong {
@@ -2373,7 +2373,7 @@ input:focus-visible {
 
 .context-usage-detail.context-usage-compact {
   gap: 3px;
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
   font-size: 12px;
 }
@@ -2401,11 +2401,24 @@ input:focus-visible {
 }
 .about-page {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, auto);
-  gap: 26px 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 32px;
   width: 100%;
-  padding: 26px 4px 8px;
+  padding: 28px 30px 8px;
+  box-sizing: border-box;
   align-items: start;
+}
+.settings .about-identity,
+.settings .about-updates {
+  padding: 0;
+}
+.about-half,
+.settings .about-community > section,
+.about-support-grid > div {
+  width: 100%;
+  justify-self: stretch;
+  min-width: 0;
+  text-align: left;
 }
 .about-identity {
   display: grid;
@@ -2436,8 +2449,21 @@ input:focus-visible {
   font-size: 13px;
   line-height: 1.6;
 }
+.about-source {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding: 24px 0 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px 24px;
+  align-items: center;
+  text-align: left;
+}
 .about-updates {
   padding: 2px 0 0;
+  min-width: 0;
+  align-self: center;
 }
 .about-update-heading {
   display: flex;
@@ -2469,7 +2495,7 @@ input:focus-visible {
   border-radius: 8px;
   display: grid;
   gap: 14px;
-  max-width: 340px;
+  max-width: 100%;
 }
 .about-update-actions {
   display: flex;
@@ -2488,18 +2514,33 @@ input:focus-visible {
   font-size: 12px;
   line-height: 1.7;
   overflow-wrap: anywhere;
-  max-width: 340px;
+  max-width: 100%;
 }
 .settings .about-support {
   grid-column: 1 / -1;
-  padding: 22px 0 0;
+  padding: 24px 0 0;
   border-top: 1px solid var(--line);
 }
 .about-support-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px 24px;
+  text-align: left;
+}
+.about-source > *,
+.about-support-heading > *,
+.about-support-grid > div,
+.settings .about-community > section {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+}
+.about-column-action {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
 }
 .about-contact-row h3,
 .about-support-heading h3 {
@@ -2514,16 +2555,20 @@ input:focus-visible {
 }
 .about-support-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) 248px;
   gap: 0 32px;
   margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--rail);
 }
 .about-support-grid > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  justify-content: start;
+  align-items: center;
   gap: 16px;
-  padding: 12px 0;
+  padding: 8px 0;
   min-width: 0;
 }
 .about-support-grid span {
@@ -2536,12 +2581,41 @@ input:focus-visible {
   font-weight: 400;
   overflow-wrap: anywhere;
   user-select: text;
-  text-align: right;
+  text-align: left;
 }
-.settings .about-contact-row {
+.about-community {
   grid-column: 1 / -1;
-  padding: 22px 0 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 264px;
+  gap: 32px;
+  align-items: stretch;
+  padding-top: 24px;
   border-top: 1px solid var(--line);
+}
+.settings .about-community > section {
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+}
+.about-community .about-contact-details,
+.about-community .n-space {
+  margin-top: 0;
+  padding-top: 16px;
+  justify-content: flex-start;
+}
+.about-repository h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.about-repository p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 .about-contact-heading h3 {
   margin: 0;
@@ -2560,17 +2634,6 @@ input:focus-visible {
   gap: 16px 28px;
   margin-top: 16px;
 }
-.about-author-name {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  color: var(--ink);
-  font-size: 14px;
-}
-.about-author-name span {
-  color: var(--muted);
-  font-size: 12px;
-}
 .about-contact {
   font-variant-numeric: tabular-nums;
 }
@@ -2586,7 +2649,12 @@ input:focus-visible {
   .about-page {
     grid-template-columns: minmax(0, 1fr);
     gap: 22px;
-    padding: 22px 0 4px;
+    padding: 24px 0 8px;
+  }
+  .about-source,
+  .about-support-heading {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
   }
   .about-update-heading {
     flex-direction: row;
@@ -2598,8 +2666,10 @@ input:focus-visible {
   .about-update-error {
     max-width: none;
   }
+  .about-community,
   .about-support-grid {
     grid-template-columns: minmax(0, 1fr);
+    row-gap: 16px;
   }
   .about-support-heading {
     flex-wrap: wrap;

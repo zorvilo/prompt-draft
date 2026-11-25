@@ -49,3 +49,11 @@ assert.equal(workspaceChanges(initial, deleted).settings.activeDraft, null);
 console.log(
   "PASS initial persistence, entity-only patches, unchanged rows, settings and deletion.",
 );
+
+const selectedSource = { ...structuredClone(initial), updateSource: "github" };
+const sourceChange = workspaceChanges(initial, selectedSource);
+assert.equal(sourceChange.settings.updateSource, "github");
+assert.equal(sourceChange.drafts, undefined);
+const clearedSource = workspaceChanges(selectedSource, initial);
+assert.ok(clearedSource.settings);
+assert.equal(clearedSource.settings.updateSource, undefined);

@@ -546,7 +546,7 @@ pub struct AvailableUpdate {
     downloaded: bool,
 }
 
-#[derive(Clone, Copy, serde::Deserialize)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UpdateSource {
     Gitee,
@@ -584,6 +584,7 @@ async fn find_update(
 #[tauri::command]
 pub async fn check_update(
     app: tauri::AppHandle,
+    source: Option<UpdateSource>,
     state: State<'_, AppState>,
 ) -> Result<Option<AvailableUpdate>, String> {
     let mut slot = state
@@ -599,9 +600,13 @@ pub async fn check_update(
             }));
         }
     }
-    let found = match find_update(&app, UpdateSource::Gitee).await {
-        Ok(found) => found,
-        Err(_) => find_update(&app, UpdateSource::Github).await?,
+    let found = if let Some(source) = source {
+        find_update(&app, source).await?
+    } else {
+        match find_update(&app, UpdateSource::Gitee).await {
+            Ok(found) => found,
+            Err(_) => find_update(&app, UpdateSource::Github).await?,
+        }
     };
     let info = found.as_ref().map(|update| AvailableUpdate {
         version: update.version.clone(),
@@ -708,5 +713,28 @@ mod update_source_tests {
             serde_json::from_value::<UpdateSource>(serde_json::json!("https://example.com"))
                 .is_err()
         );
+    }
+}
+
+#[tauri::command]
+pub fn open_project_repository(source: UpdateSource) -> Result<(), String> {
+    let address = match source {
+        UpdateSource::Gitee => "https://gitee.com/liuliang6666/prompt-draft",
+        UpdateSource::Github => "https://github.com/zorvilo/prompt-draft",
+    };
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer.exe")
+            .arg(address)
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|_| "无法打开浏览器，请稍后重试。".to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = address;
+        Err("当前平台暂不支持打开仓库。".into())
     }
 }

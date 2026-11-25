@@ -81,6 +81,7 @@ export interface Workspace {
     expandedProjects: string[];
     draftListMode: "recent" | "favorites";
   };
+  updateSource?: "gitee" | "github";
   closeBehavior?: "ask" | "hide" | "exit";
   shortcuts?: Partial<
     typeof import("../features/settings/shortcuts").defaultShortcuts
@@ -100,6 +101,7 @@ export type WorkspaceSettings = Pick<
   | "defaultTemplateId"
   | "theme"
   | "closeBehavior"
+  | "updateSource"
   | "shortcuts"
   | "activeDraft"
   | "activeProfile"
@@ -198,8 +200,11 @@ export interface SupportInfo {
   arch: string;
 }
 export const desktop = {
+  openProjectRepository: (source: "gitee" | "github") =>
+    invoke<void>("open_project_repository", { source }),
   supportInfo: () => invoke<SupportInfo>("support_info"),
-  checkUpdate: () => invoke<AvailableUpdate | null>("check_update"),
+  checkUpdate: (source?: "gitee" | "github") =>
+    invoke<AvailableUpdate | null>("check_update", { source: source ?? null }),
   downloadUpdate: (
     source: "gitee" | "github",
     onProgress: (value: { downloaded: number; total?: number }) => void,

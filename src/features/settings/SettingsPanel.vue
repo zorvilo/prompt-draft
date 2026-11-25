@@ -7,6 +7,7 @@ import { version } from "../../../package.json";
 import { computed, ref, watch } from "vue";
 import {
   ArrowLeft,
+  ExternalLink,
   Copy,
   CircleCheck,
   CircleAlert,
@@ -30,6 +31,7 @@ import {
 import {
   NButton,
   NModal,
+  NCheckbox,
   NProgress,
   NSwitch,
   NForm,
@@ -110,7 +112,7 @@ async function checkUpdate() {
   updateStage.value = "check";
   updateError.value = "";
   try {
-    updateInfo.value = await desktop.checkUpdate();
+    updateInfo.value = await desktop.checkUpdate(props.data.updateSource);
     checkedUpdate.value = true;
   } catch (error) {
     updateError.value = errorMessage(error);
@@ -119,6 +121,28 @@ async function checkUpdate() {
   }
 }
 const showUpdateSource = ref(false);
+const rememberUpdateSource = ref(true);
+async function openRepository(source: "gitee" | "github") {
+  try {
+    await desktop.openProjectRepository(source);
+  } catch (error) {
+    message.error(errorMessage(error));
+  }
+}
+async function changeUpdateSource(value: string) {
+  try {
+    await props.setUpdateSource(
+      value === "ask" ? undefined : (value as "gitee" | "github"),
+    );
+    if (!updateInfo.value?.downloaded) await checkUpdate();
+  } catch (error) {
+    updateError.value = errorMessage(error);
+  }
+}
+function startUpdateDownload() {
+  if (props.data.updateSource) void downloadUpdate(props.data.updateSource);
+  else showUpdateSource.value = true;
+}
 async function downloadUpdate(source: "gitee" | "github") {
   if (updateBusy.value || !updateInfo.value) return;
   updateBusy.value = true;
@@ -127,6 +151,7 @@ async function downloadUpdate(source: "gitee" | "github") {
   updateError.value = "";
   updateProgress.value = undefined;
   try {
+    if (rememberUpdateSource.value) await props.setUpdateSource(source);
     await desktop.downloadUpdate(source, ({ downloaded, total }) => {
       updateProgress.value = total
         ? Math.min(100, Math.floor((downloaded / total) * 100))
@@ -169,6 +194,7 @@ function providerLogo(presetId: string | undefined) {
 const props = defineProps<{
   data: Workspace;
   prepareUpdate: () => Promise<void>;
+  setUpdateSource: (value: Workspace["updateSource"]) => Promise<void>;
   section: "model" | "settings";
   updateShortcuts: (
     value: NonNullable<Workspace["shortcuts"]>,
@@ -434,6 +460,9 @@ async function run(action: "test" | "save" | "clear") {
     <p>
       下载进度将在关于页面显示。下载并验证完成后，将自动保存数据并安装更新，应用会退出并重新启动。
     </p>
+    <n-checkbox v-model:checked="rememberUpdateSource"
+      >记住选择，下次直接使用此来源</n-checkbox
+    >
     <n-space>
       <n-button @click="downloadUpdate('gitee')">Gitee（国内推荐）</n-button>
       <n-button @click="downloadUpdate('github')">GitHub（海外推荐）</n-button>
@@ -992,7 +1021,7 @@ async function run(action: "test" | "save" | "clear") {
                     type="primary"
                     :loading="updateBusy && updateStage === 'download'"
                     :disabled="updateBusy"
-                    @click="showUpdateSource = true"
+                    @click="startUpdateDownload"
                     >下载更新</n-button
                   >
                   <n-button
@@ -1009,59 +1038,103 @@ async function run(action: "test" | "save" | "clear") {
                 </div>
               </div>
             </section>
-            <section
-              class="about-contact-row"
-              aria-labelledby="contact-heading"
-            >
-              <div class="about-contact-heading">
-                <h3 id="contact-heading">联系作者</h3>
-                <p>使用建议与问题反馈，欢迎联系。</p>
+            <div class="about-source preference-row window-behavior-row">
+              <div class="about-half">
+                <h3>更新来源</h3>
+                <p>选择检查和下载更新的来源，首次下载时可记住选择。</p>
               </div>
-              <div class="about-contact-details">
-                <span class="about-author-name">刘涵宇<span>开发者</span></span>
-                <n-tooltip :delay="250" placement="top">
-                  <template #trigger>
-                    <n-button
-                      class="about-contact"
-                      :icon-size="24"
-                      size="small"
-                      aria-label="复制作者 QQ 号 2510039438"
-                      @click="copyAboutInfo('qq')"
-                    >
-                      <template #icon>
-                        <img
-                          :src="qqIcon"
-                          class="qq-brand"
-                          alt=""
+              <div class="about-half">
+                <div class="about-column-action">
+                  <n-radio-group
+                    :value="data.updateSource ?? 'ask'"
+                    size="small"
+                    aria-label="更新来源"
+                    :disabled="updateBusy"
+                    @update:value="changeUpdateSource"
+                  >
+                    <n-radio-button value="ask">每次询问</n-radio-button>
+                    <n-radio-button value="gitee">Gitee 源</n-radio-button>
+                    <n-radio-button value="github">GitHub 源</n-radio-button>
+                  </n-radio-group>
+                </div>
+              </div>
+            </div>
+            <div class="about-community">
+              <section
+                class="about-repository"
+                aria-labelledby="repository-heading"
+              >
+                <h3 id="repository-heading">开源仓库</h3>
+                <p>查看源码与反馈问题，欢迎 Star 支持。</p>
+                <n-space justify="start">
+                  <n-button @click="openRepository('gitee')"
+                    ><template #icon
+                      ><ExternalLink :size="16" aria-hidden="true" /></template
+                    >Gitee 仓库</n-button
+                  >
+                  <n-button @click="openRepository('github')"
+                    ><template #icon
+                      ><ExternalLink :size="16" aria-hidden="true" /></template
+                    >GitHub 仓库</n-button
+                  >
+                </n-space>
+              </section>
+              <section
+                class="about-contact-row"
+                aria-labelledby="contact-heading"
+              >
+                <div class="about-contact-heading">
+                  <h3 id="contact-heading">联系作者</h3>
+                  <p>刘涵宇 · 开发者，欢迎交流使用建议。</p>
+                </div>
+                <div class="about-contact-details">
+                  <n-tooltip :delay="250" placement="top">
+                    <template #trigger>
+                      <n-button
+                        class="about-contact"
+                        :icon-size="24"
+                        aria-label="复制作者 QQ 号 2510039438"
+                        @click="copyAboutInfo('qq')"
+                      >
+                        <template #icon>
+                          <img
+                            :src="qqIcon"
+                            class="qq-brand"
+                            alt=""
+                            aria-hidden="true"
+                          />
+                        </template>
+                        <span class="about-contact-number">{{ authorQQ }}</span>
+                        <Copy
+                          :size="14"
+                          class="about-contact-copy"
                           aria-hidden="true"
                         />
-                      </template>
-                      <span class="about-contact-number">{{ authorQQ }}</span>
-                      <Copy
-                        :size="14"
-                        class="about-contact-copy"
-                        aria-hidden="true"
-                      />
-                    </n-button>
-                  </template>
-                  点击复制 QQ 号
-                </n-tooltip>
-              </div>
-            </section>
+                      </n-button>
+                    </template>
+                    点击复制 QQ 号
+                  </n-tooltip>
+                </div>
+              </section>
+            </div>
             <section class="about-support" aria-labelledby="support-heading">
               <div class="about-support-heading">
-                <div>
+                <div class="about-half">
                   <h3 id="support-heading">支持信息</h3>
                   <p>反馈问题时，可复制以下环境信息。</p>
                 </div>
-                <n-button
-                  size="small"
-                  :disabled="!supportInfo"
-                  @click="copyAboutInfo('support')"
-                  ><template #icon
-                    ><Copy :size="14" aria-hidden="true" /></template
-                  >复制支持信息</n-button
-                >
+                <div class="about-half">
+                  <div class="about-column-action">
+                    <n-button
+                      size="small"
+                      :disabled="!supportInfo"
+                      @click="copyAboutInfo('support')"
+                      ><template #icon
+                        ><Copy :size="14" aria-hidden="true" /></template
+                      >复制支持信息</n-button
+                    >
+                  </div>
+                </div>
               </div>
               <div class="about-support-grid">
                 <div v-for="field in supportFields" :key="field.label">

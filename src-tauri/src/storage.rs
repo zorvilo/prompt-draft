@@ -173,6 +173,8 @@ pub struct Workspace {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     close_behavior: Option<CloseBehavior>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    update_source: Option<crate::commands::UpdateSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     shortcuts: Option<Shortcuts>,
 }
 
@@ -404,6 +406,8 @@ pub struct Settings {
     default_template_id: Option<String>,
     theme: String,
     close_behavior: Option<CloseBehavior>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    update_source: Option<crate::commands::UpdateSource>,
     shortcuts: Option<Shortcuts>,
     active_draft: Option<String>,
     active_profile: Option<String>,
@@ -510,6 +514,7 @@ pub fn load(connection: &Connection) -> rusqlite::Result<Option<String>> {
         template_categories:Some(json_rows(connection,"SELECT json_object('id',id,'name',name) FROM template_categories ORDER BY created_at,rowid")?),
         theme:preferences["theme"].as_str().unwrap_or("system").into(),
         close_behavior:serde_json::from_value(preferences["closeBehavior"].clone()).map_err(|_|rusqlite::Error::InvalidQuery)?,
+        update_source:serde_json::from_value(preferences["updateSource"].clone()).map_err(|_|rusqlite::Error::InvalidQuery)?,
         shortcuts:serde_json::from_value(preferences["shortcuts"].clone()).map_err(|_|rusqlite::Error::InvalidQuery)?,
         active_draft:ui["activeDraft"].as_str().map(String::from),
         active_profile:ui["activeProfile"].as_str().map(String::from),
@@ -617,7 +622,7 @@ fn persist(db: &Connection, changes: &WorkspaceChanges) -> rusqlite::Result<()> 
         }
     }
     if let Some(settings) = &changes.settings {
-        let preferences=serde_json::json!({"defaultTemplateId":settings.default_template_id,"theme":settings.theme,"closeBehavior":settings.close_behavior,"shortcuts":settings.shortcuts}).to_string();
+        let preferences=serde_json::json!({"defaultTemplateId":settings.default_template_id,"theme":settings.theme,"closeBehavior":settings.close_behavior,"updateSource":settings.update_source,"shortcuts":settings.shortcuts}).to_string();
         let ui=serde_json::json!({"activeDraft":settings.active_draft,"activeProfile":settings.active_profile,"uiState":settings.ui_state}).to_string();
         db.execute("INSERT INTO app_settings VALUES(1,?1,?2) ON CONFLICT(id) DO UPDATE SET preferences_json=excluded.preferences_json,ui_state_json=excluded.ui_state_json WHERE (preferences_json,ui_state_json) IS NOT (excluded.preferences_json,excluded.ui_state_json)",params![preferences,ui])?;
     }
@@ -787,6 +792,7 @@ pub fn save(db: &Connection, document: &Workspace) -> Result<(), String> {
                 default_template_id: document.default_template_id.clone(),
                 theme: document.theme.clone(),
                 close_behavior: document.close_behavior.clone(),
+                update_source: document.update_source,
                 shortcuts: document.shortcuts.clone(),
                 active_draft: document.active_draft.clone(),
                 active_profile: document.active_profile.clone(),
@@ -925,6 +931,7 @@ mod tests {
         assert!(workspace.shortcuts.is_none());
         let mut document: serde_json::Value = serde_json::from_str(input).unwrap();
         document["closeBehavior"] = serde_json::json!("hide");
+        document["updateSource"] = serde_json::json!("github");
         document["shortcuts"] = serde_json::json!({"newDraft":"Ctrl+Shift+KeyN","optimize":"Alt+Enter","newlineAlternate":""});
         document["shortcuts"]["newline"] = serde_json::json!("Alt+Enter");
         assert!(parse(&document.to_string()).is_err());
@@ -935,6 +942,10 @@ mod tests {
         assert!(matches!(
             parse(&saved).unwrap().close_behavior,
             Some(CloseBehavior::Hide)
+        ));
+        assert!(matches!(
+            parse(&saved).unwrap().update_source,
+            Some(crate::commands::UpdateSource::Github)
         ));
         assert_eq!(
             parse(&saved).unwrap().shortcuts.unwrap().optimize,

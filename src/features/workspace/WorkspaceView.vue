@@ -456,6 +456,15 @@ function selectProvider(id: string) {
   draft.value.model =
     models.value.find((item) => item.id === id)?.model ?? null;
 }
+async function setUpdateSource(value: Workspace["updateSource"]) {
+  const previous = data.value.updateSource;
+  data.value.updateSource = value;
+  await save();
+  if (saveError.value) {
+    data.value.updateSource = previous;
+    throw new Error(saveError.value);
+  }
+}
 async function prepareUpdate() {
   if (hasRequests.value) throw new Error("请等待模型请求结束后再安装更新。");
   await save();
@@ -1932,6 +1941,7 @@ onUnmounted(() => {
               :section="utilities"
               :update-shortcuts="updateShortcuts"
               :prepare-update="prepareUpdate"
+              :set-update-source="setUpdateSource"
               @close-behavior="(value) => (data.closeBehavior = value)"
               :data="data"
               @backup="backup"

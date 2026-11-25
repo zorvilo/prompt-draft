@@ -1,6 +1,6 @@
 # 发布与应用内更新
 
-应用通过 Tauri 官方 Updater 检查更新、下载验签并安装 NSIS 更新包，更新入口位于「设置 → 关于」。目前只生成 Windows x86_64 更新清单。源码和发行版同时维护在 [Gitee](https://gitee.com/liuliang6666/prompt-draft) 与 [GitHub](https://github.com/zorvilo/prompt-draft)。检查更新优先读取 Gitee 清单，失败后尝试 GitHub。下载前可选择 Gitee 或 GitHub，在关于页显示进度；下载验签完成后自动保存并安装，仍有模型请求、数据操作或保存失败时保留下载并提示重试安装。
+应用通过 Tauri 官方 Updater 检查更新、下载验签并安装 NSIS 更新包，更新入口位于「设置 → 关于」。目前只生成 Windows x86_64 更新清单。源码和发行版同时维护在 [Gitee](https://gitee.com/liuliang6666/prompt-draft) 与 [GitHub](https://github.com/zorvilo/prompt-draft)。关于页提供「每次询问 / Gitee 源 / GitHub 源」选项，偏好随工作区保存在 SQLite。未指定来源时，检查更新优先读取 Gitee 清单，失败后尝试 GitHub；指定来源后检查与下载均使用该来源。首次下载时询问并默认记住选择，也可取消记住。下载在关于页显示进度；下载验签完成后自动保存并安装，仍有模型请求、数据操作或保存失败时保留下载并提示重试安装。
 
 ## 源码同步
 
