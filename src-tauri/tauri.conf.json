@@ -25,19 +25,24 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
-    "icon": [
-      "icons/icon.ico"
-    ],
-    "createUpdaterArtifacts": true
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../NOTICE": "NOTICE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../third-party/": "third-party/",
+      "../src/assets/providers/LICENSE": "src/assets/providers/LICENSE",
+      "../src/assets/brands/README.md": "src/assets/brands/README.md",
+      "../src/assets/brands/LICENSE.md": "src/assets/brands/LICENSE.md"
+    }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYyQUIxREU3NzlEQkMzRTcKUldUbnc5dDU1eDJyOG0rc0xLZXh0UE1xNkxraEJ5MndTa2VkQkhtZUxRbFdOaWRPMVZ0V0JOWHAK",
       "endpoints": [
-        "https://gitee.com/liuliang6666/prompt-draft-releases/raw/master/latest.json"
+        "https://gitee.com/liuliang6666/prompt-draft/raw/master/latest.json"
       ],
       "windows": {
         "installMode": "passive"
