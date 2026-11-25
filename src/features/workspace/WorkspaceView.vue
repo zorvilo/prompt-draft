@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { contextTokenBudget, contextWarningRatio } from "./contextBudget";
-import { computed, h, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   ArrowLeft,
   Check,
@@ -52,6 +52,8 @@ import WindowTitlebar from "../../components/WindowTitlebar.vue";
 import LibraryPanel from "../library/LibraryPanel.vue";
 import ProjectsPanel from "../library/ProjectsPanel.vue";
 import UsagePanel from "../settings/UsagePanel.vue";
+import AppUpdateDialog from "../settings/AppUpdateDialog.vue";
+import { useAppUpdate } from "../settings/useAppUpdate";
 import SettingsPanel from "../settings/SettingsPanel.vue";
 import { modelsFor } from "../settings/modelPresets";
 import {
@@ -144,11 +146,18 @@ const utilityLabels = {
 const utilitiesTitle = computed(() =>
   utilities.value ? utilityLabels[utilities.value] : "",
 );
+const updateAboutRequest = ref(0);
 function openUtilities(section: NonNullable<typeof utilities.value>) {
   showLibrary.value = false;
   editingTemplate.value = undefined;
   libraryCategory.value = undefined;
+  updateAboutRequest.value = 0;
   utilities.value = section;
+}
+async function openUpdateAbout() {
+  openUtilities("settings");
+  await nextTick();
+  updateAboutRequest.value += 1;
 }
 const showLibrary = ref(false);
 const uiDefaults = {
@@ -465,6 +474,14 @@ async function setUpdateSource(value: Workspace["updateSource"]) {
     throw new Error(saveError.value);
   }
 }
+const appUpdate = useAppUpdate({
+  getSource: () => data.value.updateSource,
+  setSource: setUpdateSource,
+  prepareUpdate,
+});
+onMounted(() => {
+  void appUpdate.checkUpdate(true);
+});
 async function prepareUpdate() {
   if (hasRequests.value) throw new Error("请等待模型请求结束后再安装更新。");
   await save();
@@ -1588,6 +1605,7 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <app-update-dialog :updater="appUpdate" />
   <div
     class="shell"
     @pointerdown.capture="keyboardNavigation = false"
@@ -1625,6 +1643,7 @@ onUnmounted(() => {
         class="desktop-library"
         :data="data"
         :active-utility="utilities"
+        :update-available="!!appUpdate.updateInfo.value"
         :sending-draft-ids="sendingDraftIds"
         v-model:recent-expanded="recentExpanded"
         v-model:pinned-expanded="pinnedExpanded"
@@ -1636,6 +1655,7 @@ onUnmounted(() => {
         @draft-context="openDraftMenu"
         @open="loadDraft"
         @utilities="openUtilities"
+        @update="openUpdateAbout"
       />
       <main
         class="main-surface"
@@ -1940,8 +1960,8 @@ onUnmounted(() => {
               :key="utilities"
               :section="utilities"
               :update-shortcuts="updateShortcuts"
-              :prepare-update="prepareUpdate"
-              :set-update-source="setUpdateSource"
+              :updater="appUpdate"
+              :update-about-request="updateAboutRequest"
               @close-behavior="(value) => (data.closeBehavior = value)"
               :data="data"
               @backup="backup"
@@ -2251,6 +2271,7 @@ onUnmounted(() => {
         <library-panel
           :data="data"
           :active-utility="utilities"
+          :update-available="!!appUpdate.updateInfo.value"
           :sending-draft-ids="sendingDraftIds"
           v-model:recent-expanded="recentExpanded"
           v-model:pinned-expanded="pinnedExpanded"
@@ -2262,6 +2283,7 @@ onUnmounted(() => {
           @draft-context="openDraftMenu"
           @open="loadDraft"
           @utilities="openUtilities"
+          @update="openUpdateAbout"
         /> </n-drawer-content
     ></n-drawer>
   </div>

@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cpu,
+  Download,
   Settings,
   Folder,
   LoaderCircle,
@@ -24,6 +25,7 @@ import { desktop, type Workspace } from "../../lib/tauri";
 const props = defineProps<{
   data: Workspace;
   sendingDraftIds: string[];
+  updateAvailable?: boolean;
   activeUtility?: "projects" | "model" | "settings" | "templates" | "usage";
 }>();
 const todayCost = ref<string>("—");
@@ -76,6 +78,7 @@ watch(
 const emit = defineEmits<{
   create: [];
   browse: [];
+  update: [];
   deleteDraft: [id: string];
   togglePin: [id: string];
   open: [id: string];
@@ -345,6 +348,16 @@ const draftSections = computed(() => {
           >今日 {{ todayCost }}</small
         >
       </button>
+      <button
+        v-if="updateAvailable"
+        class="library-update-entry"
+        aria-label="有可用更新，前往关于页面"
+        @click="emit('update')"
+      >
+        <Download aria-hidden="true" />
+        <span class="utility-label">有可用更新</span>
+        <ChevronRight :size="14" aria-hidden="true" />
+      </button>
       <div class="library-utility-pair">
         <button
           :class="{ selected: activeUtility === 'model' }"
@@ -418,6 +431,13 @@ const draftSections = computed(() => {
 }
 .library-utility-pair > button {
   width: 100%;
+}
+.library-utilities .library-update-entry {
+  color: var(--muted);
+}
+.library-update-entry > svg:last-child {
+  width: 14px;
+  height: 14px;
 }
 .today-cost {
   margin-left: auto;

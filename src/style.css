@@ -2381,14 +2381,6 @@ input:focus-visible {
   opacity: 0.65;
 }
 
-.app-update-notes {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 240px;
-  overflow: auto;
-  margin: 0;
-}
-
 .settings-open .utilities-page:has(.settings.is-about) {
   flex: 0 1 auto;
   min-height: 0;
@@ -2488,26 +2480,18 @@ input:focus-visible {
   font-weight: 400;
   color: var(--muted);
 }
-.about-update-content {
-  margin-top: 16px;
-  padding: 14px;
-  background: var(--rail);
-  border-radius: 8px;
+.update-dialog-content {
   display: grid;
-  gap: 14px;
-  max-width: 100%;
+  gap: 20px;
 }
-.about-update-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+.update-dialog-content .app-update-notes {
+  white-space: pre-wrap;
+  max-height: min(45vh, 360px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  margin: 0;
 }
-.about-update-actions > span {
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--muted);
-}
+
 .about-update-error {
   margin: 12px 0 0;
   color: var(--removed-ink);
@@ -2662,7 +2646,6 @@ input:focus-visible {
     justify-content: space-between;
     flex-wrap: wrap;
   }
-  .about-update-content,
   .about-update-error {
     max-width: none;
   }
@@ -2682,4 +2665,16 @@ input:focus-visible {
   display: block;
   object-fit: contain;
   flex-shrink: 0;
+}
+
+.update-dialog-source {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+.update-dialog-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
 }

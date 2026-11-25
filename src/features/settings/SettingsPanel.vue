@@ -2,6 +2,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import qqIcon from "../../assets/brands/qq";
 import appIcon from "../../../src-tauri/icons/icon.png";
+import type { AppUpdate } from "./useAppUpdate";
 import ShortcutSettings from "./ShortcutSettings.vue";
 import { version } from "../../../package.json";
 import { computed, ref, watch } from "vue";
@@ -31,8 +32,6 @@ import {
 import {
   NButton,
   NModal,
-  NCheckbox,
-  NProgress,
   NSwitch,
   NForm,
   NFormItem,
@@ -50,7 +49,6 @@ import {
   desktop,
   errorMessage,
   type Profile,
-  type AvailableUpdate,
   type SupportInfo,
   type Workspace,
 } from "../../lib/tauri";
@@ -100,85 +98,12 @@ async function copyAboutInfo(kind: "qq" | "support") {
   }
 }
 const settingsTab = ref("general");
-const updateInfo = ref<AvailableUpdate | null>(null);
-const updateBusy = ref(false);
-const updateStage = ref<"check" | "download" | "install">("check");
-const updateError = ref("");
-const checkedUpdate = ref(false);
-const updateProgress = ref<number | undefined>();
-async function checkUpdate() {
-  if (updateBusy.value) return;
-  updateBusy.value = true;
-  updateStage.value = "check";
-  updateError.value = "";
-  try {
-    updateInfo.value = await desktop.checkUpdate(props.data.updateSource);
-    checkedUpdate.value = true;
-  } catch (error) {
-    updateError.value = errorMessage(error);
-  } finally {
-    updateBusy.value = false;
-  }
-}
-const showUpdateSource = ref(false);
-const rememberUpdateSource = ref(true);
+
 async function openRepository(source: "gitee" | "github") {
   try {
     await desktop.openProjectRepository(source);
   } catch (error) {
     message.error(errorMessage(error));
-  }
-}
-async function changeUpdateSource(value: string) {
-  try {
-    await props.setUpdateSource(
-      value === "ask" ? undefined : (value as "gitee" | "github"),
-    );
-    if (!updateInfo.value?.downloaded) await checkUpdate();
-  } catch (error) {
-    updateError.value = errorMessage(error);
-  }
-}
-function startUpdateDownload() {
-  if (props.data.updateSource) void downloadUpdate(props.data.updateSource);
-  else showUpdateSource.value = true;
-}
-async function downloadUpdate(source: "gitee" | "github") {
-  if (updateBusy.value || !updateInfo.value) return;
-  updateBusy.value = true;
-  showUpdateSource.value = false;
-  updateStage.value = "download";
-  updateError.value = "";
-  updateProgress.value = undefined;
-  try {
-    if (rememberUpdateSource.value) await props.setUpdateSource(source);
-    await desktop.downloadUpdate(source, ({ downloaded, total }) => {
-      updateProgress.value = total
-        ? Math.min(100, Math.floor((downloaded / total) * 100))
-        : undefined;
-    });
-    updateInfo.value.downloaded = true;
-    updateStage.value = "install";
-    await props.prepareUpdate();
-    await desktop.installUpdate();
-  } catch (error) {
-    updateError.value = errorMessage(error);
-  } finally {
-    updateBusy.value = false;
-  }
-}
-async function installUpdate() {
-  if (updateBusy.value) return;
-  updateBusy.value = true;
-  updateStage.value = "install";
-  updateError.value = "";
-  try {
-    await props.prepareUpdate();
-    await desktop.installUpdate();
-  } catch (error) {
-    updateError.value = errorMessage(error);
-  } finally {
-    updateBusy.value = false;
   }
 }
 const logos = import.meta.glob<string>("../../assets/providers/*.svg", {
@@ -193,13 +118,22 @@ function providerLogo(presetId: string | undefined) {
 
 const props = defineProps<{
   data: Workspace;
-  prepareUpdate: () => Promise<void>;
-  setUpdateSource: (value: Workspace["updateSource"]) => Promise<void>;
+  updater: AppUpdate;
+  updateAboutRequest: number;
   section: "model" | "settings";
   updateShortcuts: (
     value: NonNullable<Workspace["shortcuts"]>,
   ) => Promise<boolean>;
 }>();
+const {
+  updateInfo,
+  updateBusy,
+  updateStage,
+  updateError,
+  checkUpdate,
+  changeUpdateSource,
+  updateStatus,
+} = props.updater;
 const emit = defineEmits<{
   default: [id: string];
   backup: [];
@@ -212,22 +146,21 @@ const emit = defineEmits<{
 const message = useMessage();
 watch([settingsTab, () => props.section], ([tab, section]) => {
   if (section === "settings" && tab === "about") {
-    void checkUpdate();
     void loadSupportInfo();
   }
 });
-const updateStatus = computed(() => {
-  if (updateBusy.value)
-    return updateStage.value === "check"
-      ? "正在检查更新…"
-      : updateStage.value === "download"
-        ? "正在下载更新…"
-        : "正在准备安装…";
-  if (updateError.value) return "更新操作未完成";
-  if (updateInfo.value?.downloaded) return "更新已就绪";
-  if (updateInfo.value) return `发现新版本 ${updateInfo.value.version}`;
-  return checkedUpdate.value ? "你使用的是最新版本" : "正在准备检查更新";
-});
+watch(
+  () => props.updateAboutRequest,
+  (request) => {
+    if (request > 0 && props.section === "settings") {
+      settingsTab.value = "about";
+      void checkUpdate();
+    } else if (request === 0) {
+      settingsTab.value = "general";
+    }
+  },
+  { immediate: true },
+);
 const autostartEnabled = ref(false);
 const autostartBusy = ref(false);
 const autostartError = ref("");
@@ -451,23 +384,6 @@ async function run(action: "test" | "save" | "clear") {
 </script>
 
 <template>
-  <n-modal
-    v-model:show="showUpdateSource"
-    preset="card"
-    title="选择更新下载来源"
-    style="width: 440px; max-width: calc(100vw - 32px)"
-  >
-    <p>
-      下载进度将在关于页面显示。下载并验证完成后，将自动保存数据并安装更新，应用会退出并重新启动。
-    </p>
-    <n-checkbox v-model:checked="rememberUpdateSource"
-      >记住选择，下次直接使用此来源</n-checkbox
-    >
-    <n-space>
-      <n-button @click="downloadUpdate('gitee')">Gitee（国内推荐）</n-button>
-      <n-button @click="downloadUpdate('github')">GitHub（海外推荐）</n-button>
-    </n-space>
-  </n-modal>
   <div
     class="settings"
     :class="{ 'is-about': section === 'settings' && settingsTab === 'about' }"
@@ -995,48 +911,19 @@ async function run(action: "test" | "save" | "clear") {
                   size="small"
                   :loading="updateBusy && updateStage === 'check'"
                   :disabled="updateBusy"
-                  @click="checkUpdate"
+                  @click="checkUpdate()"
                   ><template #icon
                     ><RefreshCw :size="15" aria-hidden="true" /></template
                   >{{ updateError ? "重试检查" : "重新检查" }}</n-button
                 >
               </div>
-              <p v-if="updateError" class="about-update-error" role="alert">
+              <p
+                v-if="updateError && !updateInfo"
+                class="about-update-error"
+                role="alert"
+              >
                 {{ updateError }}
               </p>
-              <div v-if="updateInfo" class="about-update-content">
-                <p v-if="updateInfo.notes" class="app-update-notes">
-                  {{ updateInfo.notes }}
-                </p>
-                <n-progress
-                  v-if="updateBusy && updateStage === 'download'"
-                  type="line"
-                  :percentage="updateProgress ?? 0"
-                  :processing="true"
-                  :show-indicator="updateProgress !== undefined"
-                />
-                <div class="about-update-actions">
-                  <n-button
-                    v-if="!updateInfo.downloaded"
-                    type="primary"
-                    :loading="updateBusy && updateStage === 'download'"
-                    :disabled="updateBusy"
-                    @click="startUpdateDownload"
-                    >下载更新</n-button
-                  >
-                  <n-button
-                    v-else
-                    type="primary"
-                    :loading="updateBusy && updateStage === 'install'"
-                    :disabled="updateBusy"
-                    @click="installUpdate"
-                    >安装并重启</n-button
-                  >
-                  <span v-if="updateInfo.downloaded"
-                    >安装前请结束模型请求，应用会先保存当前数据。</span
-                  >
-                </div>
-              </div>
             </section>
             <div class="about-source preference-row window-behavior-row">
               <div class="about-half">
