@@ -1,0 +1,11 @@
+{
+  "version": "0.1.2",
+  "notes": "词稿 0.1.2\n\n1. 更新下载支持选择 Gitee（国内）或 GitHub（海外），关于页面显示下载进度。\n2. 下载验签完成后自动保存并安装；任务处理中或保存失败时保留已下载更新。\n3. 完善项目说明、界面截图与开源版权声明。\n\nWindows x64。安装前建议导出完整备份；备份含明文 API Key，请妥善保管。\n",
+  "pub_date": "2026-11-25T06:56:27.893Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.2/prompt-draft_0.1.2_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOGxsRGYrV25tZjZ4TnNKUjc0TStSR1RiVlVLU1hsUnM3K1BvbHJBOGxPVFBEOVdrOVlnNE9EM3NwM0pwc0dZOTFoNU80Q2hTaXBpQUFXUTQ0MVF1ZHdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NTg5NDY4CWZpbGU66K+N56i/XzAuMS4yX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMgpOVnBadXlLOUhGSXgrNzdocFpYb0lkbTVaRWMwdTRPeVFnMzhpMXYzRitXZzQvaVVRYlFBeXpoUUZBLzlMa3ExYkV5Nk9wQnZidXpFdDQxTjI2bVVCZz09Cg=="
+    }
+  }
+}
