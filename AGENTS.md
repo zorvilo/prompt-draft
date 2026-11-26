@@ -3,7 +3,7 @@
 词稿是本地提示词编辑器，支持模板优化、连续对话、草稿与项目管理。功能现状以代码为准，开发与交互约定统一维护在本文件。
 
 - Vue 使用 TypeScript 严格模式、Composition API 和 `<script setup lang="ts">`。组件用 PascalCase，TS 函数用 camelCase，Rust 函数用 snake_case。
-- 页面通过 `src/lib/tauri.ts` 调用桌面命令。Tauri 命令负责输入校验和错误转换，改写逻辑与 HTTP 客户端保持独立。
+- 页面通过 `src/api/desktop.ts` 调用桌面命令。Tauri 命令负责输入校验和错误转换，改写逻辑与 HTTP 客户端保持独立。
 - Rust 与 Vue 共享明确的请求、响应和错误字段约定。更新 IPC 字段时同步修改两端类型。
 - Vue 基础组件使用 Naive UI，界面功能图标统一用 Lucide SVG 组件。禁止把 Emoji、Unicode 表情或文本符号用作图标。纯图标按钮提供可访问名称，带文字的按钮把装饰图标对辅助技术隐藏。
 - 悬停展示描述或辅助说明时，统一使用 Naive UI `NTooltip` 的深色背景、浅色文字浮层，沿用组件圆角、阴影和箭头；禁止使用浏览器原生 `title` 或另造提示样式。多行描述显式设置 `width: 360px`、`max-width: calc(100vw - 32px)` 和 `box-sizing: border-box`，自动换行，避免被触发元素压成窄条；短标签按内容自适应。默认悬停延迟 250ms，位置优先上方并允许自动避让，不遮挡当前操作。键盘用户也应能通过聚焦获取同等说明。
@@ -11,7 +11,7 @@
 - 使用 ESLint、Prettier、`vue-tsc --noEmit`、`cargo fmt --check`、`cargo clippy` 和 `cargo test`。初始化项目时把检查加入项目脚本。改动改写契约或错误处理时加入对应回归用例。
 - 提交应用的前端锁文件和 Cargo.lock。优先按功能拆分文件，公共逻辑有实际复用时再抽取。
 
-- 模型请求、文件操作和数据库读写由 Rust 处理。前端按工作台、资料库和设置拆分。测试阶段只维护当前数据库结构，不编写迁移或旧版兼容代码；结构调整后重建测试数据库。
+- 模型请求、文件操作和数据库读写由 Rust 处理。前端采用 `views` 页面、`layout` 布局、`api` 接口、`store` 状态、`router` 路由、`config` 配置和 `utils` 工具的分层，详细归属见 `docs/FRONTEND_ARCHITECTURE.md`。测试阶段只维护当前数据库结构，不编写迁移或旧版兼容代码；结构调整后重建测试数据库。
 - 合并页面变更前检查常规和窄窗口、浅色和深色、中文输入法、可见焦点，以及空白、处理中、失败和成功四类状态。
 
 ## Git 提交与推送规范
@@ -48,7 +48,8 @@
 
 ## 数据与模块边界
 
-- workspace 负责编辑、请求与聊天，library 负责项目和模板，settings 负责供应商和设置；optimizer 负责模型输入与结果校验，model_client 负责 HTTP、流式响应和取消，storage 负责数据库及事务。
+- `views/workspace` 负责编辑、请求与聊天，`views/projects` 和 `views/templates` 负责项目和模板，`views/models` 负责供应商，`views/usage` 负责用量与价格，`views/settings` 负责应用设置；`layout` 负责外壳和跨页面任务生命周期，`store/modules/workspace.ts` 负责工作区状态与保存。
+- Rust 使用单 crate 分层：`commands` 负责 IPC 适配，`services` 负责业务流程，`models` 负责共享类型及纯校验/计费规则，`database` 负责 SQL 与事务，`clients` 负责外部 HTTP，`desktop` 负责桌面系统及官方 Updater 适配，`state.rs` 负责共享资源。简单读写命令可直接调用数据库访问函数；命令中不直接写 SQL，不承载网络请求或复杂业务流程。详细归属与依赖约束见 `docs/RUST_ARCHITECTURE.md`。
 - 日常保存按实体计算差异，仅传递变化记录和删除 ID，由 Rust 在同一事务内写入；不重写无关草稿或未变化的消息。完整工作区快照用于前端状态与导入导出，不作为数据库存储形式。
 - 删除项目将草稿改为未分配；删除草稿级联清除消息和输入状态。删除供应商时清除密钥，历史用量保留独立的供应商名称与费用快照。供应商接口地址改变时清空旧密钥，请求时按供应商 ID 和接口地址共同匹配密钥。
 - 价格、汇率和成本以十进制 TEXT 存储，由 Rust Decimal 计算；已计价请求保留费用快照，后续调价不重算历史金额。未报告 Token 用量保存 NULL，明确为零才保存 0。数据库时间戳使用 Unix 毫秒，统计 IPC 的秒级范围在 Rust 查询边界转换。

@@ -1,3 +1,14 @@
+<template>
+  <span
+    ref="viewport"
+    class="hover-scroll-text"
+    :class="{ scrolling }"
+    @mouseenter="enter"
+    @mouseleave="leave"
+    ><span ref="content" class="hover-scroll-content">{{ text }}</span></span
+  >
+</template>
+
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 const props = defineProps<{ text: string }>();
@@ -57,17 +68,6 @@ onUnmounted(() => {
   reset();
 });
 </script>
-
-<template>
-  <span
-    ref="viewport"
-    class="hover-scroll-text"
-    :class="{ scrolling }"
-    @mouseenter="enter"
-    @mouseleave="leave"
-    ><span ref="content" class="hover-scroll-content">{{ text }}</span></span
-  >
-</template>
 
 <style scoped>
 .hover-scroll-text {

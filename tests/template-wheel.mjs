@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { routeTemplateWheel } from "../src/features/workspace/templateWheel.ts";
+import { routeTemplateWheel } from "../src/utils/workspace/templateWheel.ts";
 let focused = false;
 let moved;
 let prevented;

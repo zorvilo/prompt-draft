@@ -6,7 +6,7 @@ import { setup } from "@css-render/vue3-ssr";
 
 const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
 try {
-  const { default: Panel } = await server.ssrLoadModule("/src/features/workspace/PromptWorkspace.vue");
+  const { default: Panel } = await server.ssrLoadModule("/src/views/workspace/components/PromptWorkspace.vue");
   const source = { id: "d", source: "原始需求", result: "当前正文", title: "测试", messages: [], favorite: false };
   const render = async (draft, request) => { const app = createSSRApp({ render: () => h(Panel, { draft, request, templateName: "基础优化", contextUsage: { tokens: 80000, ratio: 0.4, exceeded: false } }) }); setup(app); return renderToString(app); };
 
@@ -67,7 +67,7 @@ try {
   const jsonStream = await render({ ...source, dialogue: { mode: "chat",  } }, { text: jsonReply, userMessage: "写一个 JSON 示例" });
   assert.ok(jsonStream.includes("保留 JSON 示例"));
   assert.ok(jsonStream.includes("content"), "JSON examples must not be stripped as protocol envelopes");
-  const { default: Navigation } = await server.ssrLoadModule("/src/features/workspace/ChatNavigation.vue");
+  const { default: Navigation } = await server.ssrLoadModule("/src/views/workspace/components/ChatNavigation.vue");
   const navApp = createSSRApp({ render: () => h(Navigation, { messages: [...messages, { id: "u2", role: "user", content: "第二个提问", created: 2 }], visibleIds: ["u", "u2"] }) });
   setup(navApp);
   const navHtml = await renderToString(navApp);

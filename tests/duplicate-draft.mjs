@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { duplicateDraft } from "../src/features/workspace/duplicateDraft.ts";
+import { duplicateDraft } from "../src/utils/workspace/duplicateDraft.ts";
 const source = { id: "a", title: "测试", source: "原稿", result: "优化稿", projectId: "p", favorite: true, pinned: true, messages: [{ id: "v" }], opened: 1 };
 const original = structuredClone(source);
 const copy = duplicateDraft(source);

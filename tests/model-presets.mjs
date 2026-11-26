@@ -8,7 +8,7 @@ import {
   createProviderProfile,
   modelsFor,
   providerLogoFile,
-} from "../src/features/settings/modelPresets.ts";
+} from "../src/config/modelPresets.ts";
 const deepseek = modelPresets.find((item) => item.id === "preset-deepseek");
 const first = createProviderProfile(deepseek, []);
 const second = createProviderProfile(deepseek, [first]);

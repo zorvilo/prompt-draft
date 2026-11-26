@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { workspaceChanges } from "../src/features/workspace/workspaceChanges.ts";
+import { workspaceChanges } from "../src/store/modules/workspaceChanges.ts";
 const initial = {
   schema: 1,
   projects: [{ id: "p", name: "项目" }],

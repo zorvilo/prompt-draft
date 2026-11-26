@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createDraftRequests } from "../src/features/workspace/draftRequests.ts";
+import { createDraftRequests } from "../src/utils/workspace/draftRequests.ts";
 
 const requests = createDraftRequests();
 requests.set("a", { id: "a1", text: "" });

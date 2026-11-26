@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const source = readFileSync(new URL("../src/features/workspace/WorkspaceView.vue", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/views/templates/hooks/useTemplates.ts", import.meta.url), "utf8");
 const handler = source.split("function deleteTemplateCategory(")[1];
-const body = handler.split("async () => {")[1].split('\n    },\n    "删除",')[0];
+const body = handler.split("async () => {")[1].split(/\n\s*},\n\s*"删除",/)[0];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const remove = new AsyncFunction("data", "templateList", "category", "save", "saveError", "message", body);
 for (const fails of [false, true]) {

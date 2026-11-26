@@ -5,7 +5,7 @@ import {
   shortcutError,
   shortcutFromEvent,
   shortcutLabels,
-} from "../src/features/settings/shortcuts.ts";
+} from "../src/config/shortcuts.ts";
 for (const value of [
   "Ctrl+KeyN",
   "Ctrl+Alt+Digit1",

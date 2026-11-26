@@ -4,6 +4,15 @@ version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
 
+[lib]
+name = "prompt_draft"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "prompt-draft"
+path = "src/main.rs"
+test = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

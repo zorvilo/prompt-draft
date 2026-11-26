@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { renderTemplate } from "../src/features/library/renderTemplate.ts";
+import { renderTemplate } from "../src/utils/template/renderTemplate.ts";
 import {
   templates,
   availableTemplates,
   builtinCategories,
   isBuiltinCategory,
   isBuiltinTemplate,
-} from "../src/features/library/templates.ts";
+} from "../src/config/templates.ts";
 const workspace = () => ({
   schema: 1,
   projects: [],

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { visibleMessageIds } from "../src/features/workspace/messageVisibility.ts";
+import { visibleMessageIds } from "../src/utils/workspace/messageVisibility.ts";
 const messages = [{ id: "one", top: -60, bottom: 0 }, { id: "two", top: 20, bottom: 60 }, { id: "three", top: 180, bottom: 230 }, { id: "four", top: 300, bottom: 340 }];
 assert.deepEqual(visibleMessageIds({ top: 0, bottom: 200 }, messages), ["two", "three"]);
 assert.deepEqual(visibleMessageIds({ top: 100, bottom: 300 }, messages), ["three"]);

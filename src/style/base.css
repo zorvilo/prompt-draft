@@ -1,0 +1,59 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font:
+    14px/1.55 Inter,
+    "Microsoft YaHei UI",
+    sans-serif;
+}
+button,
+textarea,
+input {
+  font: inherit;
+}
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.app-root {
+  --canvas: #f6f7f8;
+  --paper: #fff;
+  --rail: #f3f4f5;
+  --ink: #20252b;
+  --muted: #535d68;
+  --line: #dce0e4;
+  --accent: #384454;
+  --selection: #e6e9ed;
+  --before: #ffe2e4;
+  --removed-ink: #9b2435;
+  --added-ink: #146044;
+  --after: #ccf1dd;
+  background: var(--canvas);
+  color: var(--ink);
+  min-height: 100dvh;
+}
+.app-root[data-theme="dark"] {
+  --canvas: #17191b;
+  --paper: #202326;
+  --rail: #1c1e21;
+  --ink: #eceef0;
+  --muted: #b2b8bf;
+  --line: #393e44;
+  --accent: #d0d4da;
+  --selection: #30353b;
+  --before: #542c35;
+  --removed-ink: #ffc1ca;
+  --added-ink: #a1edc6;
+  --after: #214c39;
+  color-scheme: dark;
+}
+.startup {
+  padding: 48px;
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+}

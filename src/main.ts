@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createApp } from "vue";
 import App from "./App.vue";
-import "./style.css";
+import { router } from "./router";
+import { store } from "./store";
+import "./style/index.css";
 
 try {
-  createApp(App).mount("#app");
+  createApp(App).use(store).use(router).mount("#app");
 } catch {
   const root = document.getElementById("app");
   if (root) {

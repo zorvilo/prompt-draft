@@ -102,16 +102,14 @@ npm run tauri dev
 
 ```powershell
 npm run check
-node tests/model-presets.mjs
-node tests/templates.mjs
-node tests/shortcuts.mjs
-node tests/workspace-changes.mjs
-node tests/hover-scroll-text.mjs
+npm run test:frontend
 ```
 
 运行 `npm run tauri build` 生成 Windows NSIS 安装包。
 
 - [开发规范与交互约定](AGENTS.md)
+- [前端目录与组件约定](docs/FRONTEND_ARCHITECTURE.md)
+- [Rust 分层与模块约定](docs/RUST_ARCHITECTURE.md)
 - [应用更新与发布流程](RELEASING.md)
 
 ## 致谢与许可证

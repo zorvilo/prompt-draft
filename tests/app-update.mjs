@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 const ts = require("typescript");
 const { outputText } = ts.transpileModule(
   readFileSync(
-    new URL("../src/features/settings/useAppUpdate.ts", import.meta.url),
+    new URL("../src/layout/hooks/useAppUpdate.ts", import.meta.url),
     "utf8",
   ),
   { compilerOptions: { module: ts.ModuleKind.CommonJS } },

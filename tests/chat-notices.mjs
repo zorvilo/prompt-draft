@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chatNotices } from "../src/features/workspace/chatNotices.ts";
+import { chatNotices } from "../src/utils/workspace/chatNotices.ts";
 
 const old = { providerName: "供应商 A", model: "model-a" };
 assert.deepEqual(chatNotices(undefined, { mode: "chat", ...old }), []);

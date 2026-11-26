@@ -1,7 +1,7 @@
-import { contextTokenBudget } from "../src/features/workspace/contextBudget.ts";
+import { contextTokenBudget } from "../src/utils/workspace/contextBudget.ts";
 import assert from "node:assert/strict";
-import { prepareConversation, currentResultReply, conversationUsage, recordReply, changeMode, latestContext } from "../src/features/workspace/conversation.ts";
-import { duplicateDraft } from "../src/features/workspace/duplicateDraft.ts";
+import { prepareConversation, currentResultReply, conversationUsage, recordReply, changeMode, latestContext } from "../src/utils/workspace/conversation.ts";
+import { duplicateDraft } from "../src/utils/workspace/duplicateDraft.ts";
 const template = { id: "basic", name: "基础优化", content: "保留原意", userContent: "需求：{{{draftContent}}}" };
 const draft = { id: "d", title: "稿", source: "面向新手", result: "", messages: [], favorite: false };
 const reply = (conversation, content, mode) => recordReply(draft, conversation, { content }, mode, "model", "供应商", 1234);
