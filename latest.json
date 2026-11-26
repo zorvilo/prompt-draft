@@ -1,11 +1,11 @@
 {
-  "version": "0.1.0",
-  "notes": "词稿 0.1.0 正式版\r\n\r\n首个正式版本，以当前代码为发布基线。\r\n\r\n1. 支持模板优化、连续对话、草稿与项目管理。\r\n2. 提供供应商配置、用量统计及完整本地备份。\r\n3. 启动后静默检查更新，通过侧栏更新入口查看说明、选择下载来源并安装。\r\n4. 优化关于页面及更新弹窗，Enter 默认优化或发送，Shift+Enter 换行。\r\n\r\nWindows x64。此前测试发行版已清理，已安装高版本测试版的用户请手动安装本正式版。建议安装前导出完整备份；备份包含明文 API Key，请妥善保管。",
-  "pub_date": "2026-11-25T08:57:55.667Z",
+  "version": "0.1.1",
+  "notes": "词稿 0.1.1\r\n\r\n1. 调整启动窗口显示时机：工作区首屏准备完成后再显示主窗口，避免提前露出白窗口。\r\n2. 启动失败时显示错误提示与重试入口。\r\n3. 将 Lobe Icons 许可证统一归入第三方许可证目录，同步文档及安装包配置。\r\n\r\nWindows x64。数据库结构保持不变。建议安装前导出完整备份；备份包含明文 API Key，请妥善保管。",
+  "pub_date": "2026-11-26T00:33:45.423Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.0/prompt-draft_0.1.0_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOHVvTjRzRVpLMjFyaFhCbjIxRnZuamxxQytuaVJOeUFYS1BnWTdNQlhwL1hYdUxlbXROdWM4MDlKQ1VKNmtaeTh6MW4xM0pUbldjb3FlV0cxaCtLMncwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NTk2ODI0CWZpbGU66K+N56i/XzAuMS4wX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMAoreTVpdUprQVcvMDJrNlhZOWNGdnV5SjBLQ25qVnA1S3p4cFJTM3ZOSU1ubXBLOG1oVERtR2c1THNkbW40MHhDQXpKUS9iSFZmUW5VMEcyTEZQZzFCZz09Cg=="
+      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.1/prompt-draft_0.1.1_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOHZTNW5UZnBXU091dm9BZlF6dGI5SW9relZuZGh4SVZrdmUrTDUzWGxlMzA2eXpreEtCS2g0VU1mbThKWUhyZWpucEZ4b01STVIreEtKU2VLaW9jalFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NjUzMTc2CWZpbGU66K+N56i/XzAuMS4xX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMQphaU40a0VrSkhlbzRtekxoOFNMWEtmZVNvdTVLRGlnNElTQmQ5QTQ1ZlNYeVZnemYyYjlmKzB0b25FamFXMFYrOEwxT3lZYzNOVCtyNm1nd2NEQTFCdz09Cg=="
     }
   }
 }
