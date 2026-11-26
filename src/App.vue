@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import {
   darkTheme,
   zhCN,
@@ -10,12 +10,24 @@ import {
   NDialogProvider,
   NMessageProvider,
 } from "naive-ui";
+import { desktop } from "./lib/tauri";
 import WindowTitlebar from "./components/WindowTitlebar.vue";
 import WorkspaceView from "./features/workspace/WorkspaceView.vue";
 import { useWorkspace } from "./features/workspace/workspace";
 
 const workspace = useWorkspace();
 const { data, ready, startupError, initialize } = workspace;
+let startupShown = false;
+watch(
+  () => ready.value || Boolean(startupError.value),
+  async (canShow) => {
+    if (!canShow || startupShown) return;
+    await nextTick();
+    await desktop.windowAction("show");
+    startupShown = true;
+  },
+  { flush: "post" },
+);
 const media = matchMedia("(prefers-color-scheme: dark)");
 const systemDark = ref(media.matches);
 const updateTheme = () => {
@@ -65,16 +77,13 @@ onUnmounted(() => {
       ><n-message-provider>
         <div class="app-root" :data-theme="dark ? 'dark' : 'light'">
           <workspace-view v-if="ready" :workspace="workspace" />
-          <template v-else>
+          <template v-else-if="startupError">
             <window-titlebar />
             <div class="startup">
-              <template v-if="startupError">
-                <n-alert type="error" :show-icon="false">{{
-                  startupError
-                }}</n-alert>
-                <n-button @click="initialize">重新加载</n-button>
-              </template>
-              <p v-else role="status">正在打开本地工作区…</p>
+              <n-alert type="error" :show-icon="false">{{
+                startupError
+              }}</n-alert>
+              <n-button @click="initialize">重新加载</n-button>
             </div>
           </template>
         </div>

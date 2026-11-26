@@ -21,5 +21,5 @@
 
 ## 其他第三方资产
 
-- Lobe Icons：[src/assets/providers/LICENSE](src/assets/providers/LICENSE)。
+- Lobe Icons：[third-party/lobe-icons-LICENSE](third-party/lobe-icons-LICENSE)。
 - 品牌资产：[src/assets/brands/README.md](src/assets/brands/README.md) 与 [src/assets/brands/LICENSE.md](src/assets/brands/LICENSE.md)。

@@ -122,6 +122,6 @@ node tests/hover-scroll-text.mjs
 | ----------------------------------------------------------------- | ----------------------------------------------------------- |
 | [Prompt Optimizer](https://github.com/linshenkx/prompt-optimizer) | Copyright (C) 2025 linshenkx · 上游当前许可证 AGPL-3.0-only |
 | [CC Switch](https://github.com/farion1231/cc-switch)              | Copyright (c) 2025 Jason Young · MIT                        |
-| [Lobe Icons](https://github.com/lobehub/lobe-icons)               | 供应商品牌 SVG · [许可证](src/assets/providers/LICENSE)     |
+| [Lobe Icons](https://github.com/lobehub/lobe-icons)               | 供应商品牌 SVG · [许可证](third-party/lobe-icons-LICENSE)     |
 
 项目自有代码采用 [Apache-2.0](LICENSE)。第三方内容保留各自的版权和许可条件，完整说明见[第三方版权声明](THIRD_PARTY_NOTICES.md)，上游许可证保存在 [third-party](third-party/) 目录，并随应用分发。项目自有代码的 Apache-2.0 许可不替代上游内容适用的许可义务。

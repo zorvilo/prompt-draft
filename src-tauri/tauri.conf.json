@@ -1,6 +1,6 @@
 {
   "productName": "词稿",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "cn.promptdraft.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -16,7 +16,8 @@
         "height": 820,
         "minWidth": 480,
         "minHeight": 570,
-        "decorations": false
+        "decorations": false,
+        "visible": false
       }
     ],
     "security": {
@@ -33,7 +34,6 @@
       "../NOTICE": "NOTICE",
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
       "../third-party/": "third-party/",
-      "../src/assets/providers/LICENSE": "src/assets/providers/LICENSE",
       "../src/assets/brands/README.md": "src/assets/brands/README.md",
       "../src/assets/brands/LICENSE.md": "src/assets/brands/LICENSE.md"
     }

@@ -236,7 +236,7 @@ export const desktop = {
     filter: string | null;
   }) => invoke<UsageStats>("usage_stats", query),
   autostart: (enabled?: boolean) => invoke<boolean>("autostart", { enabled }),
-  windowAction: (action: "hide" | "exit") =>
+  windowAction: (action: "show" | "hide" | "exit") =>
     invoke<void>("window_action", { action }),
   load: () => invoke<string | null>("load"),
   saveChanges: (changes: WorkspaceChanges) =>
