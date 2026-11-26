@@ -1,11 +1,11 @@
 {
-  "version": "0.1.1",
-  "notes": "词稿 0.1.1 修复版\r\n\r\n1. 修复正式安装包中按钮、输入框等组件样式失效的问题。\r\n2. 主窗口在工作区首屏准备后显示，避免提前露出白窗口。\r\n3. 统一第三方许可证存放位置。\r\n\r\n本修复包替换此前的 0.1.1，版本号保持不变。已安装旧 0.1.1 的用户请手动下载安装覆盖；0.1.0 用户可通过应用内更新。数据库结构保持不变。建议安装前导出完整备份，备份包含明文 API Key，请妥善保管。",
-  "pub_date": "2026-11-26T00:43:51.084Z",
+  "version": "0.1.2",
+  "notes": "### 改进\r\n\r\n- 重新梳理前后端模块分层，拆分页面组件与业务逻辑，便于后续维护。\r\n- 供应商配置与 API Key 在同一事务中保存，保存失败时一起回滚。\r\n\r\n### 修复\r\n\r\n- 修复删除项目时误删草稿的问题，草稿改为未分配，正文、聊天记录和后台生成任务继续保留。\r\n- 修复只剩一个项目时无法删除的问题。\r\n- 修复自定义换行快捷键未在编辑器生效的问题，备用快捷键留空时保持禁用。\r\n- 修复供应商、模板保存失败后编辑内容丢失的问题，失败时保留表单并恢复列表，成功后再关闭。\r\n",
+  "pub_date": "2026-11-26T05:06:04.900Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.1/prompt-draft_0.1.1_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOGdCNk5jVmV4eXI2WFNiYzRWU2F3TFRuN0hzUE1BU0Nmeng0c3lHTEN4cXozdWN3WGt2YllSaG50WU1RLzVsb2VHRGZOQ2hwRVBtd2Z3SVpJR2FEdUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NjUzNzM2CWZpbGU66K+N56i/XzAuMS4xX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMQptNDZJMWFXUWwrK3lZRktFK1JMMTRLaFVpSFlqOWtzUWVIZXVqTjcxODBDT2JoWHJRcnViSXFqWFpQS0lUendJVXNhNEI1NFZUenk0UmxXZnZ1R1ZCQT09Cg=="
+      "url": "https://gitee.com/liuliang6666/prompt-draft/releases/download/v0.1.2/prompt-draft_0.1.2_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbnc5dDU1eDJyOGx5aWl2VFZXUERoTGZFMEVyNGpnTzRPb0M4RHhvMUN1eEVpc0Z5Z21QNzI5L1NDblc4cFRKbzlkdGhMSk1GditCNW9pM3ovZzBWWHVXL2VxRGNNZndVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NjY5NDQ2CWZpbGU66K+N56i/XzAuMS4yX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjEuMgpZblIwRkFrK09aVnFPdmhSd05XL3VPUHpjVmc5Z3FndjdpdHRDTGRQZmxGN2NzcmRtUlZTMHJwdUQ3R2pWcHFJRGVXc0RiOXNpU2lOVHdZeFJXd3VCUT09Cg=="
     }
   }
 }
